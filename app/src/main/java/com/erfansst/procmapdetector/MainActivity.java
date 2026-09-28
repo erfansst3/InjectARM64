@@ -27,7 +27,7 @@ public class MainActivity extends Activity {
         bar.setOrientation(LinearLayout.HORIZONTAL);
 
         Button test = new Button(this);
-        test.setText("RUN HOOK TEST");
+        test.setText("RUN LIBC HOOK");
 
         Button copy = new Button(this);
         copy.setText("COPY LOG");
@@ -64,7 +64,7 @@ public class MainActivity extends Activity {
         String s = out.getText().toString();
         ClipboardManager cm =
                 (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-        cm.setPrimaryClip(ClipData.newPlainText("GSpace Hook Log", s));
+        cm.setPrimaryClip(ClipData.newPlainText("GSpace Libc Hook Log", s));
         Toast.makeText(this, "Log copied", Toast.LENGTH_SHORT).show();
     }
 
