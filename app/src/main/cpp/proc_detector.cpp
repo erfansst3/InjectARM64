@@ -66,65 +66,123 @@ static void enumerateLoaded(){
 dl_iterate_phdr(phdrCallback,nullptr);
 }
 
-static bool relevant(const char* n){
-if(!n)return false;
-std::string s=n;
-std::transform(s.begin(),s.end(),s.begin(),[](unsigned char c){return (char)std::tolower(c);});
-return s.find("hook")!=std::string::npos||s.find("substrate")!=std::string::npos||s.find("sandhook")!=std::string::npos||s.find("inline")!=std::string::npos||s.find("xhook")!=std::string::npos;
+static const char* symType(unsigned t){
+switch(t){
+case STT_NOTYPE:return "NOTYPE";
+case STT_OBJECT:return "OBJECT";
+case STT_FUNC:return "FUNC";
+case STT_SECTION:return "SECTION";
+case STT_FILE:return "FILE";
+#ifdef STT_GNU_IFUNC
+case STT_GNU_IFUNC:return "IFUNC";
+#endif
+default:return "OTHER";
+}
 }
 
-static void enumerateExports(){
+static const char* symBind(unsigned b){
+switch(b){
+case STB_LOCAL:return "LOCAL";
+case STB_GLOBAL:return "GLOBAL";
+case STB_WEAK:return "WEAK";
+#ifdef STB_GNU_UNIQUE
+case STB_GNU_UNIQUE:return "UNIQUE";
+#endif
+default:return "OTHER";
+}
+}
+
+static const char* symVis(unsigned v){
+switch(v){
+case STV_DEFAULT:return "DEFAULT";
+case STV_INTERNAL:return "INTERNAL";
+case STV_HIDDEN:return "HIDDEN";
+case STV_PROTECTED:return "PROTECTED";
+default:return "OTHER";
+}
+}
+
+static void logDlsymResult(void* handle,const char* label,const char* name){
+dlerror();
+void* p=dlsym(handle,name);
+const char* err=dlerror();
+if(p){
+Dl_info di{};
+if(dladdr(p,&di)){
+logLine(std::string("DLSYM ")+label+" "+name+"=0x"+
+std::to_string((unsigned long long)(uintptr_t)p)+
+" owner="+(di.dli_fname?di.dli_fname:"?")+
+" sym="+(di.dli_sname?di.dli_sname:"?"));
+}else{
+logLine(std::string("DLSYM ")+label+" "+name+"=0x"+
+std::to_string((unsigned long long)(uintptr_t)p)+" dladdr=NO");
+}
+}else{
+logLine(std::string("DLSYM ")+label+" "+name+"=NO err="+(err?err:"?"));
+}
+}
+
+static void inspectTargetSymbols(){
+static const char* targets[]={
+"MSHookFunction",
+"A64HookFunction",
+"A64HookFunctionV",
+"SandInlineHook",
+"SandSingleInstHook"
+};
+
 auto cb=[](struct dl_phdr_info* info,size_t,void*)->int{
 if(!info->dlpi_name||!strstr(info->dlpi_name,"libgspace_64.so"))return 0;
-const ElfW(Phdr)* dynPhdr=nullptr;
-for(int i=0;i<info->dlpi_phnum;i++)if(info->dlpi_phdr[i].p_type==PT_DYNAMIC){dynPhdr=&info->dlpi_phdr[i];break;}
+const Elf64_Phdr* dynPhdr=nullptr;
+for(int i=0;i<info->dlpi_phnum;i++){
+if(info->dlpi_phdr[i].p_type==PT_DYNAMIC){
+dynPhdr=reinterpret_cast<const Elf64_Phdr*>(&info->dlpi_phdr[i]);
+break;
+}
+}
 if(!dynPhdr)return 0;
-ElfW(Dyn)* dyn=reinterpret_cast<ElfW(Dyn)*>(info->dlpi_addr+dynPhdr->p_vaddr);
-ElfW(Sym)* symtab=nullptr;
+
+Elf64_Dyn* dyn=reinterpret_cast<Elf64_Dyn*>(info->dlpi_addr+dynPhdr->p_vaddr);
+Elf64_Sym* symtab=nullptr;
 const char* strtab=nullptr;
 size_t strsz=0;
-ElfW(Word)* hash=nullptr;
-ElfW(Word)* ghash=nullptr;
-for(ElfW(Dyn)* d=dyn;d->d_tag!=DT_NULL;d++){
-if(d->d_tag==DT_SYMTAB)symtab=reinterpret_cast<ElfW(Sym)*>(info->dlpi_addr+d->d_un.d_ptr);
-else if(d->d_tag==DT_STRTAB)strtab=reinterpret_cast<const char*>(info->dlpi_addr+d->d_un.d_ptr);
-else if(d->d_tag==DT_STRSZ)strsz=d->d_un.d_val;
-else if(d->d_tag==DT_HASH)hash=reinterpret_cast<ElfW(Word)*>(info->dlpi_addr+d->d_un.d_ptr);
-else if(d->d_tag==DT_GNU_HASH)ghash=reinterpret_cast<ElfW(Word)*>(info->dlpi_addr+d->d_un.d_ptr);
+Elf64_Word* hash=nullptr;
+
+for(Elf64_Dyn* d=dyn;d->d_tag!=DT_NULL;d++){
+if(d->d_tag==DT_SYMTAB) symtab=reinterpret_cast<Elf64_Sym*>(info->dlpi_addr+d->d_un.d_ptr);
+else if(d->d_tag==DT_STRTAB) strtab=reinterpret_cast<const char*>(info->dlpi_addr+d->d_un.d_ptr);
+else if(d->d_tag==DT_STRSZ) strsz=(size_t)d->d_un.d_val;
+else if(d->d_tag==DT_HASH) hash=reinterpret_cast<Elf64_Word*>(info->dlpi_addr+d->d_un.d_ptr);
 }
-if(!symtab||!strtab||!strsz)return 0;
-size_t count=hash?hash[1]:0;
-if(!count&&ghash){
-uint32_t nb=ghash[0],symoff=ghash[1],maskwords=ghash[2];
-const uintptr_t* bloom=reinterpret_cast<const uintptr_t*>(ghash+4);
-const uint32_t* buckets=reinterpret_cast<const uint32_t*>(bloom+maskwords);
-const uint32_t* chains=buckets+nb;
-for(uint32_t b=0;b<nb;b++){
-uint32_t idx=buckets[b];
-if(idx<symoff)continue;
-for(;;idx++){
-count=std::max(count,(size_t)idx+1);
-if(chains[idx-symoff]&1)break;
-if(count>1000000)return 0;
-}
-}
-}
-if(!count||count>1000000)return 0;
-logLine("GSPACE_EXPORTS: begin");
-size_t shown=0;
+if(!symtab||!strtab||!strsz||!hash)return 0;
+
+size_t count=hash[1];
+logLine("TARGETS: base=0x"+std::to_string((unsigned long long)info->dlpi_addr));
+
+for(const char* target:targets){
+bool found=false;
 for(size_t i=0;i<count;i++){
-const ElfW(Sym)& s=symtab[i];
+const Elf64_Sym& s=symtab[i];
 if(!s.st_name||s.st_name>=strsz||s.st_shndx==SHN_UNDEF)continue;
-unsigned bind=ELF64_ST_BIND(s.st_info);
-if(bind==STB_LOCAL)continue;
 const char* n=strtab+s.st_name;
-logLine("EXPORT "+std::string(n)+" value=0x"+std::to_string((unsigned long long)s.st_value));
-if(relevant(n))logLine("HOOK_RELATED "+std::string(n));
-shown++;
+if(strcmp(n,target)!=0)continue;
+
+found=true;
+uintptr_t addr=(uintptr_t)(info->dlpi_addr+s.st_value);
+logLine(std::string("ELF ")+target+
+" value=0x"+std::to_string((unsigned long long)s.st_value)+
+" addr=0x"+std::to_string((unsigned long long)addr)+
+" bind="+symBind(ELF64_ST_BIND(s.st_info))+
+" vis="+symVis(ELF64_ST_VISIBILITY(s.st_other))+
+" type="+symType(ELF64_ST_TYPE(s.st_info))+
+" shndx="+std::to_string((unsigned)s.st_shndx));
+break;
 }
-logLine("GSPACE_EXPORTS: count="+std::to_string(shown));
-return 1;
+if(!found)logLine(std::string("ELF ")+target+"=NOT_FOUND");
+}
+return 0;
 };
+
 dl_iterate_phdr(cb,nullptr);
 }
 
@@ -155,27 +213,48 @@ return r;
 static bool installHook(){
 if(gInstalled)return true;
 std::string path;
-if(!findLoadedGspace(path)){logLine("GSPACE_API: libgspace_64.so NOT FOUND");return false;}
+if(!findLoadedGspace(path)){
+logLine("GSPACE_API: libgspace_64.so NOT FOUND");
+return false;
+}
 gGspacePath=path;
 logLine("GSPACE_API: found "+path);
 enumerateLoaded();
-enumerateExports();
+inspectTargetSymbols();
+
 void* h=dlopen("libgspace_64.so",RTLD_NOW|RTLD_NOLOAD);
 if(h){
 logLine("GSPACE_API: basename dlopen OK");
-gMSHookFunction=reinterpret_cast<MSHookFunctionFn>(dlsym(h,"MSHookFunction"));
+logDlsymResult(h,"HANDLE","MSHookFunction");
+}else{
+const char* err=dlerror();
+logLine(std::string("GSPACE_API: basename dlopen NO err=")+(err?err:"?"));
 }
+
+logDlsymResult(RTLD_DEFAULT,"DEFAULT","MSHookFunction");
+
+dlerror();
+gMSHookFunction=reinterpret_cast<MSHookFunctionFn>(dlsym(h? h:RTLD_DEFAULT,"MSHookFunction"));
+const char* err=dlerror();
 if(!gMSHookFunction){
-gMSHookFunction=reinterpret_cast<MSHookFunctionFn>(dlsym(RTLD_DEFAULT,"MSHookFunction"));
-if(gMSHookFunction)logLine("GSPACE_API: RTLD_DEFAULT MSHookFunction FOUND");
+logLine(std::string("GSPACE_API: selected MSHookFunction=NO err=")+(err?err:"?"));
+return false;
 }
-if(!gMSHookFunction){logLine("GSPACE_API: MSHookFunction NOT RESOLVED");return false;}
+
 gApiFound=true;
 logLine("GSPACE_API: MSHookFunction export FOUND");
+
 void* original=nullptr;
-gMSHookFunction(reinterpret_cast<void*>(&smapsProbe),reinterpret_cast<void*>(&hookedSmapsProbe),&original);
+gMSHookFunction(reinterpret_cast<void*>(&smapsProbe),
+reinterpret_cast<void*>(&hookedSmapsProbe),
+&original);
+
 gOriginalProbe=reinterpret_cast<ProbeFn>(original);
-if(!gOriginalProbe){logLine("HOOK: original trampoline NOT returned");return false;}
+if(!gOriginalProbe){
+logLine("HOOK: original trampoline NOT returned");
+return false;
+}
+
 gInstalled=true;
 logLine("HOOK: local smapsProbe INSTALLED");
 return true;
