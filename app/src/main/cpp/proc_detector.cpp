@@ -84,6 +84,11 @@ static bool getFdPath(int fd,std::string&out){
     return true;
 }
 
+static bool isEnvironFd(int fd){
+    std::string p;
+    return getFdPath(fd,p)&&p.find("/proc/")!=std::string::npos&&p.find("/environ")!=std::string::npos;
+}
+
 static ssize_t hookedRead(int fd,void*buf,size_t n){
     ssize_t r=gOriginalRead?gOriginalRead(fd,buf,n):-1;
     if(r>0&&isSmapsFd(fd)){
