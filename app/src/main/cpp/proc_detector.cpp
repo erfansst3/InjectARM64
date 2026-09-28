@@ -197,6 +197,8 @@ static bool resolveLibcPuts() {
     return true;
 }
 
+static std::string snapshot();
+
 static bool installHook() {
     if (gInstalled) {
         return true;
