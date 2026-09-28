@@ -18,6 +18,7 @@ static ReadFn gRead=nullptr;
 static std::atomic<int> gProbeFd{-1};
 static std::atomic<int> gHits{0};
 static bool gInstalled=false;
+static std::atomic<bool> gAutoTried{false};
 
 static std::string hex(uintptr_t v){
 char b[32];snprintf(b,sizeof(b),"0x%llx",(unsigned long long)v);return b;
@@ -76,12 +77,21 @@ gInstalled=true;
 return true;
 }
 
+__attribute__((constructor)) static void autoHook(){
+if(gAutoTried.exchange(true))return;
+for(int i=0;i<20&&!gInstalled;i++){
+if(install())break;
+usleep(100000);
+}
+}
+
 extern "C" JNIEXPORT jstring JNICALL Java_com_erfansst_procmapdetector_MainActivity_hookEnvironment(JNIEnv*e,jobject){
 bool ok=install();
 std::string s="PID="+std::to_string(getpid())+"\n";
 s+="GSPACE_HOOK_API="+std::string(gHook?"YES":"NO")+"\n";
 s+="LIBC_READ="+std::string(gRead?"YES":"NO")+"\n";
 s+="READ_HOOK="+std::string(ok?"INSTALLED":"FAILED")+"\n";
+s+="AUTO_HOOK="+std::string(gInstalled?"ACTIVE":"INACTIVE")+"\n";
 s+="READ_ADDR="+hex((uintptr_t)gRead);
 return e->NewStringUTF(s.c_str());
 }
