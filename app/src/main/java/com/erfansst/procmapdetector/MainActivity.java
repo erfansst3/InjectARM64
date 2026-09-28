@@ -9,7 +9,7 @@ import android.widget.*;
 public class MainActivity extends Activity{
 TextView out;
 android.os.Handler h=new android.os.Handler(android.os.Looper.getMainLooper());
-boolean auto=true;
+boolean auto=false;
 static{System.loadLibrary("procmap_test");}
 final Runnable refresh=new Runnable(){public void run(){if(auto){runRead();h.postDelayed(this,1000);}}};
 public void onCreate(Bundle b){
@@ -28,8 +28,7 @@ root.addView(bar);root.addView(s,new LinearLayout.LayoutParams(-1,0,1));setConte
 install.setOnClickListener(v->runInstall());
 read.setOnClickListener(v->runRead());
 copy.setOnClickListener(v->copyLog());
-runInstall();
-h.post(refresh);
+
 }
 void runInstall(){new Thread(()->{String r=installHook();runOnUiThread(()->out.setText(r));}).start();}
 void runRead(){new Thread(()->{String r=triggerSmaps();runOnUiThread(()->out.setText(r));}).start();}
