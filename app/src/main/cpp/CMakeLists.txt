@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22.1)
-project(proc_detector)
-add_library(proc_detector SHARED proc_detector.cpp)
+project(gspace_64)
+add_library(gspace_64 SHARED proc_detector.cpp)
 find_library(log-lib log)
-target_link_libraries(proc_detector \${log-lib})
+target_link_libraries(gspace_64 ${log-lib})
