@@ -8,6 +8,7 @@
 #include <cctype>
 #include <fcntl.h>
 #include <cerrno>
+#include <cstdlib>
 #include <sys/uio.h>
 
 static bool pidname(const char* n){if(!n||!*n)return false;for(;*n;n++)if(!isdigit((unsigned char)*n))return false;return true;}
@@ -39,14 +40,14 @@ if(!pidname(en->d_name))continue;
 seen++;std::string pid=en->d_name;pid_t target=(pid_t)strtol(en->d_name,nullptr,10);std::string base="/proc/"+pid+"/";
 auto mr=maps(base+"maps");
 if(mr.ok)mapsok++;else mapsfail++;
-int ro=memopen(base+"mem",O_RDONLY);int wo=memopen(base+"mem",O_WRONLY);
+int ro=memopen(base+"mem",O_RDONLY);int re=errno;int wo=memopen(base+"mem",O_WRONLY);int we=errno;
 if(ro>=0){readopen++;close(ro);}if(wo>=0){writeopen++;close(wo);}
 int rv=vmprobe(target,false),wv=vmprobe(target,true);
 if(rv>0)readvm++;if(wv>0)writevm++;
 out+="PID "+pid+" | "+readcmd(base+"cmdline")+"\n";
 out+="  maps="+(mr.ok?std::string("YES"):"NO")+"("+std::to_string(mr.count)+")";
-out+="  /mem(R)="+std::string(pstat(ro>=0?1:(errno==EACCES||errno==EPERM?0:-1)));
-out+="  /mem(W)="+std::string(pstat(wo>=0?1:(errno==EACCES||errno==EPERM?0:-1)));
+out+="  /mem(R)="+std::string(pstat(ro>=0?1:(re==EACCES||re==EPERM?0:-1)));
+out+="  /mem(W)="+std::string(pstat(wo>=0?1:(we==EACCES||we==EPERM?0:-1)));
 out+="  vm_read="+std::string(pstat(rv))+"  vm_write="+std::string(pstat(wv))+mr.libs+"\n\n";
 }
 closedir(d);
