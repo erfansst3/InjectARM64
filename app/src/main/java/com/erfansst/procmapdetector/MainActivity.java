@@ -1,6 +1,7 @@
 package com.erfansst.procmapdetector;
 
 import android.app.Activity;
+import android.database.Cursor;
 import android.os.Bundle;
 import android.os.Environment;
 import android.content.*;
