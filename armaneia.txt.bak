@@ -1,0 +1,744 @@
+Xposed callback: NO
+Guest hook state: NO
+XposedBridge: NO
+XposedCompat: NO
+SandHook: NO
+VirtualCore: NO
+Virtual data-path marker: YES
+Data: /data/data/com.gspace.android/virtual/data/user/0/com.erfansst3.xposedbridgeexample
+
+=== NATIVE RELATED CHECKS ===
+Native marker score: 2/4
+GSpace runtime: YES
+libgspace_64.so: LOADED
+libstub.so: LOADED
+gspace path: /data/app/~~GdayEh5tF4Htie3_z9GMCg==/com.gspace.android-N7dvMbEXhZuQN5ROLXzYPg==/lib/arm64/libgspace_64.so
+gspace base: 0x7bcd141000
+stub path: /data/app/~~GdayEh5tF4Htie3_z9GMCg==/com.gspace.android-N7dvMbEXhZuQN5ROLXzYPg==/lib/arm64/libstub.so
+stub base: 0x7c08aa7000
+
+[Loaded native libraries]
+/data/app/~~GdayEh5tF4Htie3_z9GMCg==/com.gspace.android-N7dvMbEXhZuQN5ROLXzYPg==/lib/arm64/libstub.so
+/data/app/~~GdayEh5tF4Htie3_z9GMCg==/com.gspace.android-N7dvMbEXhZuQN5ROLXzYPg==/lib/arm64/libgspace_64.so
+/data/app/~~RW-Q0rYv6q9lhWk7xetVLg==/com.erfansst3.xposedbridgeexample-AZ5-n_oDl3g0F1bDR_MHrg==/base.apk!/lib/arm64-v8a/libxposed_native_diag.so
+
+[/proc/self/maps — relevant only]
+7bc2704000-7bc27f3000 r-xp 00004000 fd:34 364819                         /data/app/~~RW-Q0rYv6q9lhWk7xetVLg==/com.erfansst3.xposedbridgeexample-AZ5-n_oDl3g0F1bDR_MHrg==/base.apk
+7bc27f3000-7bc27fc000 r--p 000f2000 fd:34 364819                         /data/app/~~RW-Q0rYv6q9lhWk7xetVLg==/com.erfansst3.xposedbridgeexample-AZ5-n_oDl3g0F1bDR_MHrg==/base.apk
+7bc27fc000-7bc27fd000 rw-p 000fa000 fd:34 364819                         /data/app/~~RW-Q0rYv6q9lhWk7xetVLg==/com.erfansst3.xposedbridgeexample-AZ5-n_oDl3g0F1bDR_MHrg==/base.apk
+7bc5c1e000-7bc7c0f000 r--s 02a8f000 fd:34 900848                         /data/data/com.gspace.android/virtual/data/app/com.google.android.gms/base.apk
+7bcd141000-7bcd1d9000 r-xp 00000000 fd:34 696470                         /data/app/~~GdayEh5tF4Htie3_z9GMCg==/com.gspace.android-N7dvMbEXhZuQN5ROLXzYPg==/lib/arm64/libgspace_64.so
+7bcd1e8000-7bcd1f0000 r--p 00097000 fd:34 696470                         /data/app/~~GdayEh5tF4Htie3_z9GMCg==/com.gspace.android-N7dvMbEXhZuQN5ROLXzYPg==/lib/arm64/libgspace_64.so
+7bcd1f0000-7bcd1f1000 rw-p 0009f000 fd:34 696470                         /data/app/~~GdayEh5tF4Htie3_z9GMCg==/com.gspace.android-N7dvMbEXhZuQN5ROLXzYPg==/lib/arm64/libgspace_64.so
+7c08aa7000-7c08d33000 r-xp 00000000 fd:34 662906                         /data/app/~~GdayEh5tF4Htie3_z9GMCg==/com.gspace.android-N7dvMbEXhZuQN5ROLXzYPg==/lib/arm64/libstub.so
+7c08d36000-7c08d3a000 r--p 0028b000 fd:34 662906                         /data/app/~~GdayEh5tF4Htie3_z9GMCg==/com.gspace.android-N7dvMbEXhZuQN5ROLXzYPg==/lib/arm64/libstub.so
+7c08d3d000-7c08d41000 rw-p 0028e000 fd:34 662906                         /data/app/~~GdayEh5tF4Htie3_z9GMCg==/com.gspace.android-N7dvMbEXhZuQN5ROLXzYPg==/lib/arm64/libstub.so
+7c16e0c000-7c18009000 rw-p 00000000 fd:34 577526                         /data/app/~~GdayEh5tF4Htie3_z9GMCg==/com.gspace.android-N7dvMbEXhZuQN5ROLXzYPg==/oat/arm64/base.vdex
+7c767d4000-7c76851000 r--s 04b1b000 fd:34 900848                         /data/data/com.gspace.android/virtual/data/app/com.google.android.gms/base.apk
+7c76ab7000-7c76ce0000 r--s 00650000 fd:34 888787                         /data/app/~~GdayEh5tF4Htie3_z9GMCg==/com.gspace.android-N7dvMbEXhZuQN5ROLXzYPg==/base.apk
+7f3dfda000-7f3e000000 r--s 012a8000 fd:34 888787                         /data/app/~~GdayEh5tF4Htie3_z9GMCg==/com.gspace.android-N7dvMbEXhZuQN5ROLXzYPg==/base.apk
+7f4c93d000-7f4c93f000 r--s 001bd000 fd:34 364819                         /data/app/~~RW-Q0rYv6q9lhWk7xetVLg==/com.erfansst3.xposedbridgeexample-AZ5-n_oDl3g0F1bDR_MHrg==/base.apk
+7f4d400000-7f4d402000 r--s 00005000 fd:34 332795                         /data/user/0/com.gspace.android/cache/8bd0edce5a32299379dbc587fc824bbb2c223aaffd99dda86c3242e70500b8dd7d7ba6bb51d906c7xz.apk
+7f4d733000-7f4d734000 r--s 00005000 fd:34 332795                         /data/user/0/com.gspace.android/cache/8bd0edce5a32299379dbc587fc824bbb2c223aaffd99dda86c3242e70500b8dd7d7ba6bb51d906c7xz.apk
+7f4d7fb000-7f4d7fc000 r--s 001bf000 fd:34 364819                         /data/app/~~RW-Q0rYv6q9lhWk7xetVLg==/com.erfansst3.xposedbridgeexample-AZ5-n_oDl3g0F1bDR_MHrg==/base.apk
+
+[/proc/self/mountinfo — relevant only]
+NONE
+
+[Environment — relevant only]
+NONE
+
+[libstub.so API]
+module: libstub.so
+loaded: YES
+path: /data/app/~~GdayEh5tF4Htie3_z9GMCg==/com.gspace.android-N7dvMbEXhZuQN5ROLXzYPg==/lib/arm64/libstub.so
+base: 0x7c08aa7000
+dynsym entries: 38
+[candidate exported functions]
+JNI_OnLoad | value=0x2adfc | addr=0x7c08ad1dfc
+[all exported function names — first 300]
+__cxa_finalize
+__cxa_atexit
+__stack_chk_fail
+pthread_mutex_lock
+pthread_mutex_unlock
+memset
+__android_log_print
+free
+malloc
+posix_memalign
+__memmove_chk
+__strlen_chk
+__vsnprintf_chk
+memchr
+memcpy
+memmove
+realloc
+strlen
+abort
+android_set_abort_message
+closelog
+fputc
+openlog
+syslog
+vasprintf
+vfprintf
+calloc
+strcmp
+pthread_create
+pthread_getspecific
+pthread_key_delete
+pthread_setspecific
+pthread_once
+pthread_key_create
+dl_iterate_phdr
+JNI_OnLoad
+
+[libstub.so JNI EXPORTS]
+module: libstub.so
+loaded: YES
+base: 0x7c08aa7000
+[Java_com_* JNI exports]
+NONE
+
+[libgspace_64.so API]
+module: libgspace_64.so
+loaded: YES
+path: /data/app/~~GdayEh5tF4Htie3_z9GMCg==/com.gspace.android-N7dvMbEXhZuQN5ROLXzYPg==/lib/arm64/libgspace_64.so
+base: 0x7bcd141000
+dynsym entries: 2234
+[candidate exported functions]
+_ZN3art6mirror9ArtMethod22disableInterpreterForOEv | value=0x58188 | addr=0x7bcd199188
+_ZN8SandHook3Asm9WRegisterC2Eh | value=0x60fd0 | addr=0x7bcd1a1fd0
+_ZN8SandHook13CastArtMethod4initEP7_JNIEnv | value=0x56d24 | addr=0x7bcd197d24
+_ZN8SandHook6AsmA6414InstructionA64I22A64_STRUCT_SUB_EXT_REGLj16EE4SizeEv | value=0x60918 | addr=0x7bcd1a1918
+_ZN8SandHook3Asm11InstructionI18A64_STRUCT_MSR_MRSLj21EE8UnitTypeEv | value=0x60e38 | addr=0x7bcd1a1e38
+_ZN8SandHook9Assembler16StaticCodeBufferC1Em | value=0x5c254 | addr=0x7bcd19d254
+_ZN8SandHook6AsmA6414A64_BR_BLR_RET8AssembleEv | value=0x5e6c8 | addr=0x7bcd19f6c8
+_ZNSt6__ndk113unordered_setIPN3art6mirror9ArtMethodENS_4hashIS4_EENS_8equal_toIS4_EENS_9allocatorIS4_EEED2Ev | value=0x549bc | addr=0x7bcd1959bc
+_ZN8SandHook3Asm9WRegisterC2Ev | value=0x60fe8 | addr=0x7bcd1a1fe8
+_ZN3art6mirror9ArtMethod8isStaticEv | value=0x5831c | addr=0x7bcd19931c
+_ZN8SandHook6AsmA6412A64_TBZ_TBNZC2ENS1_2OPERNS_3Asm11RegisterA64EjPNS3_5LabelE | value=0x5e23c | addr=0x7bcd19f23c
+_ZN8SandHook3Asm15CodeRelocateA6417relocate_TBZ_TBNZEPNS_6AsmA6412A64_TBZ_TBNZEPv | value=0x615ec | addr=0x7bcd1a25ec
+_ZN8SandHook3Asm11InstructionI22A64_STRUCT_SUB_EXT_REGLj16EE8InstCodeEv | value=0x60930 | addr=0x7bcd1a1930
+_ZN8SandHook3Asm11InstructionI19A64_STRUCT_CBZ_CBNZLj14EE8InstCodeEv | value=0x60160 | addr=0x7bcd1a1160
+_ZN8SandHook3Asm11InstructionI17A64_STRUCT_UNKNOWLj0EE8PcRelateEv | value=0x62424 | addr=0x7bcd1a3424
+Java_com_swift_sandhook_SandHook_disableDex2oatInline | value=0x53674 | addr=0x7bcd194674
+_ZN8SandHook6AsmA6411A64_LDR_LIT11DisassembleEv | value=0x5e564 | addr=0x7bcd19f564
+_ZN8SandHook3Asm11InstructionI18A64_STRUCT_MSR_MRSLj21EE12OnLabelApplyEm | value=0x60e74 | addr=0x7bcd1a1e74
+_ZN8SandHook9Assembler12AssemblerA643CmpERNS_3Asm11RegisterA64ERKNS_6AsmA647OperandE | value=0x5d2a4 | addr=0x7bcd19e2a4
+_ZN8SandHook3Asm11InstructionI19A64_STRUCT_LDR_UIMMLj5EE11DisassembleEv | value=0x60f50 | addr=0x7bcd1a1f50
+_ZN8SandHook3Asm4UnitI19A64_STRUCT_CBZ_CBNZE4MoveEPS2_ | value=0x6012c | addr=0x7bcd1a112c
+_ZN3art6mirror9ArtMethod26disableFastInterpreterForQEv | value=0x5818c | addr=0x7bcd19918c
+_ZN8SandHook3Asm11InstructionI18A64_STRUCT_MSR_MRSLj21EE13OnOffsetApplyEl | value=0x60e70 | addr=0x7bcd1a1e70
+_ZN8SandHook3Asm4UnitI18A64_STRUCT_LDR_IMME5GetPCEv | value=0x60aa4 | addr=0x7bcd1a1aa4
+Java_com_swift_sandhook_SandHook_canGetObject | value=0x535c8 | addr=0x7bcd1945c8
+_ZN8SandHook3Asm11InstructionI18A64_STRUCT_STR_IMMLj9EE8UnitTypeEv | value=0x6067c | addr=0x7bcd1a167c
+_ZN3art6mirror9ArtMethod10flushCacheEv | value=0x588c4 | addr=0x7bcd1998c4
+_ZN8SandHook6AsmA6413A64_LDRSW_IMMC2ERNS_3Asm11RegisterA64ERKNS0_10MemOperandE | value=0x5f54c | addr=0x7bcd1a054c
+_ZN8SandHook21CastEntryPointFromJni9calOffsetEP7_JNIEnvPN3art6mirror9ArtMethodE | value=0x57f04 | addr=0x7bcd198f04
+_ZN8SandHook3Asm11InstructionI19A64_STRUCT_STR_UIMMLj10EE11DisassembleEv | value=0x60f10 | addr=0x7bcd1a1f10
+_ZN8SandHook6AsmA6415A64_ADD_SUB_IMMC1ENS1_2OPENS1_1SERNS_3Asm11RegisterA64ERKNS0_7OperandE | value=0x5fb58 | addr=0x7bcd1a0b58
+_ZN8SandHook7IMemberIN3art15CompilerOptionsEmE13getParentSizeEv | value=0x58000 | addr=0x7bcd199000
+_ZN8SandHook6AsmA648A64_B_BL11DisassembleEv | value=0x5dd80 | addr=0x7bcd19ed80
+_ZN8SandHook3Asm11InstructionI22A64_STRUCT_ADD_SUB_IMMLj20EE13OnOffsetApplyEl | value=0x60d94 | addr=0x7bcd1a1d94
+_ZN8SandHook6AsmA648A64_B_BL14GetImmPCOffsetEv | value=0x5dd4c | addr=0x7bcd19ed4c
+_ZThn32_N8SandHook3Asm11InstructionI22A64_STRUCT_ADD_SUB_IMMLj20EE12OnLabelApplyEm | value=0x60dd4 | addr=0x7bcd1a1dd4
+_ZN8SandHook6AsmA6412A64_TBZ_TBNZ14GetImmPCOffsetEv | value=0x5e2c8 | addr=0x7bcd19f2c8
+_ZN8SandHook6AsmA6412A64_LDR_UIMMC1EPv | value=0x5f31c | addr=0x7bcd1a031c
+_ZThn32_N8SandHook3Asm11InstructionI19A64_STRUCT_MOV_WIDELj1EE12OnLabelApplyEm | value=0x5ffc4 | addr=0x7bcd1a0fc4
+_ZN8SandHook21PCRelatedCheckVisitor5visitEPNS_4InstEmm | value=0x547e8 | addr=0x7bcd1957e8
+_ZN8SandHook6AsmA6414InstructionA64I17A64_STRUCT_B_CONDLj12EE4ArchEv | value=0x60270 | addr=0x7bcd1a1270
+_ZN8SandHook6AsmA6411A64_LDR_IMMC2ERNS_3Asm11RegisterA64ERKNS0_10MemOperandE | value=0x5f0ac | addr=0x7bcd1a00ac
+_ZN8SandHook3Asm11InstructionI17A64_STRUCT_UNKNOWLj0EE8AssembleEv | value=0x62484 | addr=0x7bcd1a3484
+_ZN8SandHook6AsmA6411A64_LDR_LITC2ENS1_2OPERNS_3Asm11RegisterA64El | value=0x5e468 | addr=0x7bcd19f468
+_ZN8SandHook3Asm4UnitI21A64_STRUCT_BR_BLR_RETE6GetVPCEv | value=0x60584 | addr=0x7bcd1a1584
+_ZN8SandHook6AsmA6414A64_LDRSW_UIMMC2EPv | value=0x5f724 | addr=0x7bcd1a0724
+_ZN8SandHook6AsmA6412A64_MOV_WIDEC2EPv | value=0x5dad8 | addr=0x7bcd19ead8
+_Z21hookRuntimeNativeLoadP7_JNIEnvi | value=0x49f90 | addr=0x7bcd18af90
+_Z12relocate_artP7_JNIEnvPKc | value=0x4847c | addr=0x7bcd18947c
+_ZN8SandHook3Asm4UnitI18A64_STRUCT_MOV_REGE6GetVPCEv | value=0x60818 | addr=0x7bcd1a1818
+_ZN8SandHook7IMemberIN3art6mirror9ArtMethodEjE13getParentSizeEv | value=0x57648 | addr=0x7bcd198648
+_ZN8SandHook9Assembler12AssemblerA642BlEPNS_3Asm5LabelE | value=0x5ca2c | addr=0x7bcd19da2c
+_ZN8SandHook6AsmA6410A64_B_CONDC1E9Conditionl | value=0x5e064 | addr=0x7bcd19f064
+_ZN8SandHook3Asm11InstructionI19A64_STRUCT_LDR_UIMMLj5EE6UnknowEv | value=0x60bd4 | addr=0x7bcd1a1bd4
+_ZN8SandHook6AsmA648A64_B_BLC2EPv | value=0x5dc60 | addr=0x7bcd19ec60
+_ZN8SandHook3Elf11TextSegmentC2EPvS2_ | value=0x59f10 | addr=0x7bcd19af10
+_ZN8SandHook6ElfImgC2EPKc | value=0x56794 | addr=0x7bcd197794
+_ZN8SandHook6AsmA6417A64_EXCEPTION_GEN8AssembleEv | value=0x5efb0 | addr=0x7bcd19ffb0
+_ZN8SandHook19CastCompilerOptions4initEP7_JNIEnv | value=0x57fa0 | addr=0x7bcd198fa0
+_ZN8SandHook6AsmA6414InstructionA64I18A64_STRUCT_LDR_LITLj4EE4SizeEv | value=0x60490 | addr=0x7bcd1a1490
+_ZN8SandHook6AsmA6411A64_LDR_LITC1ENS1_2OPERNS_3Asm11RegisterA64El | value=0x5e468 | addr=0x7bcd19f468
+_ZN8SandHook6AsmA648A64_B_BL13OnOffsetApplyEl | value=0x5dd68 | addr=0x7bcd19ed68
+_ZThn32_N8SandHook3Asm11InstructionI21A64_STRUCT_BR_BLR_RETLj13EE12OnLabelApplyEm | value=0x60618 | addr=0x7bcd1a1618
+_ZThn32_N8SandHook3Asm11InstructionI22A64_STRUCT_SUB_EXT_REGLj16EE12OnLabelApplyEm | value=0x60988 | addr=0x7bcd1a1988
+_ZN8SandHook9Assembler12AssemblerA644CbnzERNS_3Asm11RegisterA64EPNS2_5LabelE | value=0x5ce44 | addr=0x7bcd19de44
+_ZN8SandHook6AsmA6414InstructionA64I22A64_STRUCT_ADD_SUB_IMMLj20EE4SizeEv | value=0x60d64 | addr=0x7bcd1a1d64
+_ZN8SandHook7IMemberIN3art6mirror9ArtMethodEjE9getOffsetEv | value=0x57640 | addr=0x7bcd198640
+_ZN8SandHook3Asm4UnitI21A64_STRUCT_BR_BLR_RETE4MoveEPS2_ | value=0x6058c | addr=0x7bcd1a158c
+_ZN8SandHook3Asm11InstructionI18A64_STRUCT_MOV_REGLj2EE8UnitTypeEv | value=0x60834 | addr=0x7bcd1a1834
+_ZN8SandHook9Assembler12AssemblerA643MrsERNS_3Asm14SystemRegisterERNS2_11RegisterA64E | value=0x5d63c | addr=0x7bcd19e63c
+_ZN8SandHook6AsmA6412A64_ADR_ADRPC1ENS1_2OPERNS_3Asm9XRegisterEl | value=0x5d944 | addr=0x7bcd19e944
+_ZN8SandHook6AsmA6414InstructionA64I18A64_STRUCT_STP_LDPLj19EE8InstTypeEv | value=0x60c90 | addr=0x7bcd1a1c90
+_ZN8SandHook3Asm11InstructionI19A64_STRUCT_MOV_WIDELj1EE8UnitTypeEv | value=0x5ff4c | addr=0x7bcd1a0f4c
+_ZN8SandHook9Assembler17AndroidCodeBuffer9GetBufferEj | value=0x5c0f0 | addr=0x7bcd19d0f0
+_ZN8SandHook6AsmA6411A64_LDR_LITC1ENS1_2OPERNS_3Asm11RegisterA64EPNS3_5LabelE | value=0x5e4a0 | addr=0x7bcd19f4a0
+_ZN8SandHook3Asm4UnitINS0_14STRUCT_DATA_32EE6GetVPCEv | value=0x5d8f0 | addr=0x7bcd19e8f0
+Java_com_swift_sandhook_ClassNeverCall_neverCallNative2 | value=0x537b8 | addr=0x7bcd1947b8
+_ZN8SandHook3Asm11InstructionI19A64_STRUCT_ADR_ADRPLj3EE13OnOffsetApplyEl | value=0x5fea8 | addr=0x7bcd1a0ea8
+_ZN3art6mirror9ArtMethod23setInterpreterCodeEntryEPv | value=0x585c0 | addr=0x7bcd1995c0
+_ZN8SandHook7Decoder14DefaultVisitorC2ENSt6__ndk18functionIFbPNS_3Asm11InstructionI4BaseLj0EEEPvEEE | value=0x61ce8 | addr=0x7bcd1a2ce8
+_ZN3art6mirror9ArtMethod23getInterpreterCodeEntryEv | value=0x58518 | addr=0x7bcd199518
+_ZN3art6mirror9ArtMethod10isAbstractEv | value=0x582b4 | addr=0x7bcd1992b4
+_ZN8SandHook3Asm9XRegisterC1Eh | value=0x60f9c | addr=0x7bcd1a1f9c
+_ZN8SandHook7Decoder14DefaultVisitor5VisitEPNS_3Asm4UnitI4BaseEEPv | value=0x61c64 | addr=0x7bcd1a2c64
+_ZN8SandHook6AsmA6414InstructionA64I19A64_STRUCT_ADR_ADRPLj3EE4SizeEv | value=0x5fe78 | addr=0x7bcd1a0e78
+_ZN8SandHook10InstDecode6decodeEPvmPNS_11InstVisitorE | value=0x58a2c | addr=0x7bcd199a2c
+_ZN8SandHook3Asm4UnitI19A64_STRUCT_STR_UIMME5GetPCEv | value=0x60734 | addr=0x7bcd1a1734
+_Z17hookGetCallingPidP7_JNIEnv | value=0x499bc | addr=0x7bcd18a9bc
+_ZN3art6mirror9ArtMethod22setDexCacheResolveListEPv | value=0x585e4 | addr=0x7bcd1995e4
+_ZN8SandHook6AsmA6414InstructionA64I17A64_STRUCT_B_CONDLj12EE8InstTypeEv | value=0x60268 | addr=0x7bcd1a1268
+_ZN8SandHook6AsmA6411A64_LDR_IMMC1EPv | value=0x5f07c | addr=0x7bcd1a007c
+_ZN8SandHook3Asm9XRegisterC1Ev | value=0x60fb4 | addr=0x7bcd1a1fb4
+_ZN8SandHook20DirectJumpTrampoline12templateCodeEv | value=0x54940 | addr=0x7bcd195940
+_ZN8SandHook3Asm11InstructionI22A64_STRUCT_ADD_SUB_IMMLj20EE8UnitTypeEv | value=0x60d5c | addr=0x7bcd1a1d5c
+_ZN8SandHook9Assembler12AssemblerA644MovzERNS_3Asm11RegisterA64EmNS_6AsmA6412A64_MOV_WIDE5ShiftE | value=0x5c5f0 | addr=0x7bcd19d5f0
+_ZN3art6mirror9ArtMethod7compileEP7_JNIEnv | value=0x58678 | addr=0x7bcd199678
+_ZN8SandHook6AsmA6414InstructionA64I18A64_STRUCT_LDR_IMMLj6EE4SizeEv | value=0x60ad0 | addr=0x7bcd1a1ad0
+_ZN8SandHook7IMemberIN3art6mirror9ArtMethodEtE13getParentSizeEv | value=0x57e14 | addr=0x7bcd198e14
+_ZN8SandHook3Asm11InstructionI15A64_STRUCT_B_BLLj11EE8UnitTypeEv | value=0x60028 | addr=0x7bcd1a1028
+_ZN8SandHook3Asm11InstructionI18A64_STRUCT_MSR_MRSLj21EE8PcRelateEv | value=0x60e60 | addr=0x7bcd1a1e60
+_ZN8SandHook3Asm4UnitI15A64_STRUCT_B_BLE5GetPCEv | value=0x60004 | addr=0x7bcd1a1004
+_ZN3art6mirror9ArtMethod15setJniCodeEntryEPv | value=0x5859c | addr=0x7bcd19959c
+_ZN8SandHook6AsmA6415A64_SUB_EXT_REG11DisassembleEv | value=0x5ed90 | addr=0x7bcd19fd90
+_ZN8SandHook10Trampoline4initEv | value=0x54894 | addr=0x7bcd195894
+_ZN8SandHook3Asm15CodeRelocateA648RelocateEPvmS2_ | value=0x61114 | addr=0x7bcd1a2114
+_ZN3art6mirror9ArtMethod10setPrivateEv | value=0x583f8 | addr=0x7bcd1993f8
+_ZN8SandHook9Assembler12AssemblerA641BE9ConditionPNS_3Asm5LabelE | value=0x5cae8 | addr=0x7bcd19dae8
+Java_com_swift_sandhook_SandHook_setHookMode | value=0x535e0 | addr=0x7bcd1945e0
+_ZN8SandHook3Asm11InstructionI18A64_STRUCT_STR_IMMLj9EE12OnLabelApplyEm | value=0x606b8 | addr=0x7bcd1a16b8
+_ZN8SandHook3Asm4UnitI17A64_STRUCT_B_CONDE4MoveEPS2_ | value=0x60244 | addr=0x7bcd1a1244
+_ZN8SandHook3Asm11InstructionI18A64_STRUCT_STR_IMMLj9EE13OnOffsetApplyEl | value=0x606b4 | addr=0x7bcd1a16b4
+_ZN8SandHook9InstArm643binEv | value=0x58bb8 | addr=0x7bcd199bb8
+_ZN8SandHook6ElfImg14getSymbAddressEPKc | value=0x56ce4 | addr=0x7bcd197ce4
+_ZN8SandHook9Assembler12AssemblerA644CbnzERNS_3Asm11RegisterA64El | value=0x5cde0 | addr=0x7bcd19dde0
+_ZN8SandHook3Elf6ElfImg13GetSymAddressEPKc | value=0x5a584 | addr=0x7bcd19b584
+_ZN8SandHook3Asm11InstructionI18A64_STRUCT_STR_IMMLj9EE8PcRelateEv | value=0x606a4 | addr=0x7bcd1a16a4
+_ZN8SandHook3Asm4UnitINS0_14STRUCT_DATA_32EE5GetPCEv | value=0x5d8e8 | addr=0x7bcd19e8e8
+_ZN8SandHook4Hook10InlineHook21InitForSingleInstHookEv | value=0x5a8d0 | addr=0x7bcd19b8d0
+_ZThn32_N8SandHook3Asm11InstructionI19A64_STRUCT_ADR_ADRPLj3EE12OnLabelApplyEm | value=0x5fee8 | addr=0x7bcd1a0ee8
+_ZN8SandHook17TrampolineManager23installInlineTrampolineEPN3art6mirror9ArtMethodES4_S4_ | value=0x54018 | addr=0x7bcd195018
+_ZN8SandHook3Asm4UnitI18A64_STRUCT_STP_LDPE4MoveEPS2_ | value=0x60c6c | addr=0x7bcd1a1c6c
+_ZN8SandHook6AsmA6411A64_STP_LDPC2EPv | value=0x5f880 | addr=0x7bcd1a0880
+_ZN3art6mirror9ArtMethod9deCompileEv | value=0x587a0 | addr=0x7bcd1997a0
+_ZN8SandHook6AsmA6414InstructionA64I22A64_STRUCT_SUB_EXT_REGLj16EE4ArchEv | value=0x60928 | addr=0x7bcd1a1928
+_ZN8SandHook3Asm4UnitINS0_14STRUCT_DATA_64EE5GetPCEv | value=0x5d8bc | addr=0x7bcd19e8bc
+_ZN8SandHook6AsmA6415A64_INST_PC_RELI18A64_STRUCT_LDR_LITLj4EE8PcRelateEv | value=0x604b0 | addr=0x7bcd1a14b0
+_ZN8SandHook6AsmA6414InstructionA64I22A64_STRUCT_ADD_SUB_IMMLj20EE8InstTypeEv | value=0x60d6c | addr=0x7bcd1a1d6c
+_ZN3art6mirror9ArtMethod17getQuickCodeEntryEv | value=0x583d0 | addr=0x7bcd1993d0
+_ZN8SandHook3Asm4UnitI4BaseE6GetVPCEv | value=0x5bc94 | addr=0x7bcd19cc94
+_ZN8SandHook3Asm4UnitI17A64_STRUCT_UNKNOWE5GetPCEv | value=0x623d8 | addr=0x7bcd1a33d8
+_ZN8SandHook3Asm11InstructionI18A64_STRUCT_STR_IMMLj9EE11DisassembleEv | value=0x60ef0 | addr=0x7bcd1a1ef0
+_Z21hookOpenDexFileNativeP7_JNIEnvP8_jobjecthi | value=0x49a28 | addr=0x7bcd18aa28
+_ZN3art6mirror9ArtMethod17setDeclaringClassEj | value=0x58630 | addr=0x7bcd199630
+_ZThn32_N8SandHook3Asm11InstructionI17A64_STRUCT_UNKNOWLj0EE12OnLabelApplyEm | value=0x62494 | addr=0x7bcd1a3494
+_ZN8SandHook6AsmA6412A64_TBZ_TBNZ8AssembleEv | value=0x5e36c | addr=0x7bcd19f36c
+_ZN8SandHook3Asm4UnitI17A64_STRUCT_B_CONDE5GetPCEv | value=0x60234 | addr=0x7bcd1a1234
+_ZN3art6mirror9ArtMethod4sizeEv | value=0x588e4 | addr=0x7bcd1998e4
+_ZN8SandHook6AsmA6414InstructionA64I19A64_STRUCT_LDR_UIMMLj5EE8InstTypeEv | value=0x60bb4 | addr=0x7bcd1a1bb4
+_ZN8SandHook17TrampolineManager3getEv | value=0x546c4 | addr=0x7bcd1956c4
+_ZN8SandHook22CastInlineMaxCodeUnits9calOffsetEP7_JNIEnvPN3art15CompilerOptionsE | value=0x58084 | addr=0x7bcd199084
+_ZN8SandHook3Asm11InstructionI18A64_STRUCT_STR_IMMLj9EE8AssembleEv | value=0x60f00 | addr=0x7bcd1a1f00
+_ZN8SandHook6AsmA6414InstructionA64I15A64_STRUCT_B_BLLj11EE8InstTypeEv | value=0x60038 | addr=0x7bcd1a1038
+_ZN8SandHook6AsmA6412A64_TBZ_TBNZC1EPv | value=0x5e1cc | addr=0x7bcd19f1cc
+_ZN8SandHook9Assembler13CodeContainerD1Ev | value=0x5bfe0 | addr=0x7bcd19cfe0
+addPendingHookNative | value=0x54a08 | addr=0x7bcd195a08
+_ZN8SandHook6AsmA6415A64_ADD_SUB_IMMC2EPv | value=0x5fb28 | addr=0x7bcd1a0b28
+MSHookFunction | value=0x508ec | addr=0x7bcd1918ec
+_ZN8SandHook3Asm15CodeRelocateA64D0Ev | value=0x61c00 | addr=0x7bcd1a2c00
+_ZN8SandHook6AsmA6411A64_STP_LDP8AssembleEv | value=0x5f9cc | addr=0x7bcd1a09cc
+_ZN8SandHook20CallOriginTrampoline10codeLengthEv | value=0x5494c | addr=0x7bcd19594c
+_ZN8SandHook3Asm11InstructionI22A64_STRUCT_SUB_EXT_REGLj16EE6UnknowEv | value=0x60940 | addr=0x7bcd1a1940
+_ZN3art6mirror9ArtMethod16tryDisableInlineEv | value=0x580dc | addr=0x7bcd1990dc
+_ZN8SandHook3Asm4DataINS0_14STRUCT_DATA_32EE4MoveEPS2_ | value=0x5d8f8 | addr=0x7bcd19e8f8
+_ZN8SandHook3Asm11InstructionI18A64_STRUCT_STP_LDPLj19EE6UnknowEv | value=0x60cb0 | addr=0x7bcd1a1cb0
+_ZN8SandHook6AsmA6415A64_SUB_EXT_REGC2ERNS_3Asm11RegisterA64ES4_RKNS0_7OperandENS0_11FlagsUpdateE | value=0x5ed50 | addr=0x7bcd19fd50
+_ZN8SandHook3Asm11InstructionI18A64_STRUCT_MOV_REGLj2EE8PcRelateEv | value=0x6085c | addr=0x7bcd1a185c
+_ZN8SandHook9Assembler12AssemblerA642BrERNS_3Asm9XRegisterE | value=0x5c860 | addr=0x7bcd19d860
+_ZN8SandHook3Asm11InstructionI24A64_STRUCT_EXCEPTION_GENLj17EE12OnLabelApplyEm | value=0x60a28 | addr=0x7bcd1a1a28
+_ZN8SandHook9Assembler12AssemblerA641BE9Conditionl | value=0x5ca88 | addr=0x7bcd19da88
+_ZN8SandHook3Asm4DataINS0_14STRUCT_DATA_64EE4MoveEPS2_ | value=0x5d8cc | addr=0x7bcd19e8cc
+_ZN8SandHook3Asm11InstructionI19A64_STRUCT_MOV_WIDELj1EE8PcRelateEv | value=0x5ff74 | addr=0x7bcd1a0f74
+_ZN8SandHook3Asm11InstructionI18A64_STRUCT_LDR_IMMLj6EE11DisassembleEv | value=0x60f30 | addr=0x7bcd1a1f30
+_ZN8SandHook6AsmA6411A64_MOV_REG11DisassembleEv | value=0x5ec38 | addr=0x7bcd19fc38
+_ZN8SandHook6AsmA6411A64_LDR_LITC2EPv | value=0x5e438 | addr=0x7bcd19f438
+_ZN8SandHook9Assembler12AssemblerA643CbzERNS_3Asm11RegisterA64El | value=0x5cd18 | addr=0x7bcd19dd18
+_ZN8SandHook6AsmA6412A64_ADR_ADRPC1ENS1_2OPERNS_3Asm9XRegisterEPNS3_5LabelE | value=0x5d97c | addr=0x7bcd19e97c
+_ZN8SandHook6AsmA647A64_SVCC1Et | value=0x5f00c | addr=0x7bcd1a000c
+_ZN8SandHook6AsmA6414InstructionA64I19A64_STRUCT_ADR_ADRPLj3EE8InstTypeEv | value=0x5fe80 | addr=0x7bcd1a0e80
+_ZN8SandHook9Assembler13CodeContainerC2EPNS0_10CodeBufferE | value=0x5bd18 | addr=0x7bcd19cd18
+_ZN8SandHook6AsmA6414InstructionA64I19A64_STRUCT_LDR_UIMMLj5EE4SizeEv | value=0x60bac | addr=0x7bcd1a1bac
+_ZThn32_N8SandHook3Asm11InstructionI19A64_STRUCT_TBZ_TBNZLj15EE12OnLabelApplyEm | value=0x60424 | addr=0x7bcd1a1424
+_ZN8SandHook3Asm8RegisterINS0_17A64RegisterStructEE7GetDataEv | value=0x61014 | addr=0x7bcd1a2014
+_ZN8SandHook3Asm11InstructionI19A64_STRUCT_ADR_ADRPLj3EE12OnLabelApplyEm | value=0x5feac | addr=0x7bcd1a0eac
+_ZN8SandHook17TrampolineManager28installReplacementTrampolineEPN3art6mirror9ArtMethodES4_S4_ | value=0x53d2c | addr=0x7bcd194d2c
+_ZN8SandHook6AsmA6412A64_TBZ_TBNZC1ENS1_2OPERNS_3Asm11RegisterA64Ejl | value=0x5e1fc | addr=0x7bcd19f1fc
+_ZN8SandHook3Elf6ElfImgC2EPKc | value=0x59f18 | addr=0x7bcd19af18
+_ZN8SandHook9Assembler16StaticCodeBuffer9GetBufferEj | value=0x5c268 | addr=0x7bcd19d268
+_ZNSt6__ndk16__treeINS_12__value_typeImPN8SandHook3Asm5LabelEEENS_19__map_value_compareImS6_NS_4lessImEELb1EEENS_9allocatorIS6_EEE7destroyEPNS_11__tree_nodeIS6_PvEE | value=0x5bcd8 | addr=0x7bcd19ccd8
+_ZN8SandHook3Asm11InstructionI22A64_STRUCT_ADD_SUB_IMMLj20EE8PcRelateEv | value=0x60d84 | addr=0x7bcd1a1d84
+_ZN8SandHook6AsmA6413A64_LDRSW_IMMC1EPv | value=0x5f51c | addr=0x7bcd1a051c
+_ZN8SandHook6AsmA6414InstructionA64I18A64_STRUCT_LDR_LITLj4EE4ArchEv | value=0x604a0 | addr=0x7bcd1a14a0
+_ZN8SandHook6AsmA6414InstructionA64I22A64_STRUCT_ADD_SUB_IMMLj20EE4ArchEv | value=0x60d74 | addr=0x7bcd1a1d74
+_ZN3art15CompilerOptions21getInlineMaxCodeUnitsEv | value=0x588f4 | addr=0x7bcd1998f4
+_ZN8SandHook20CallOriginTrampoline12templateCodeEv | value=0x54954 | addr=0x7bcd195954
+_ZN8SandHook6ElfImgD2Ev | value=0x56b9c | addr=0x7bcd197b9c
+_ZN8SandHook3Asm5Label4SizeEv | value=0x5bcac | addr=0x7bcd19ccac
+_ZN8SandHook6ElfImg13getModuleBaseEPKc | value=0x56a24 | addr=0x7bcd197a24
+_ZN8SandHook25InstSizeNeedBackupVisitor5visitEPNS_4InstEmm | value=0x548e8 | addr=0x7bcd1958e8
+_ZN8SandHook7IMemberIN3art6mirror9ArtMethodEtE3getEPS3_ | value=0x57e1c | addr=0x7bcd198e1c
+_ZN8SandHook6AsmA6414InstructionA64I15A64_STRUCT_B_BLLj11EE4SizeEv | value=0x60030 | addr=0x7bcd1a1030
+_ZN8SandHook6AsmA648A64_B_BLC2ENS1_2OPEPNS_3Asm5LabelE | value=0x5dcc8 | addr=0x7bcd19ecc8
+_ZN8SandHook3Asm11InstructionI18A64_STRUCT_LDR_IMMLj6EE13OnOffsetApplyEl | value=0x60b00 | addr=0x7bcd1a1b00
+_Z25SandHook_InterruptHandleriP7siginfoPv | value=0x5a854 | addr=0x7bcd19b854
+_ZN8SandHook17TrampolineManager17allocExecuteSpaceEm | value=0x53c04 | addr=0x7bcd194c04
+_ZThn32_N8SandHook3Asm11InstructionI18A64_STRUCT_LDR_IMMLj6EE12OnLabelApplyEm | value=0x60b40 | addr=0x7bcd1a1b40
+_ZN8SandHook6AsmA6414InstructionA64I19A64_STRUCT_ADR_ADRPLj3EE4ArchEv | value=0x5fe88 | addr=0x7bcd1a0e88
+_ZN8SandHook9Assembler12AssemblerA644TbnzERNS_3Asm11RegisterA64EjPNS2_5LabelE | value=0x5cca4 | addr=0x7bcd19dca4
+JNI_OnLoad | value=0x440c0 | addr=0x7bcd1850c0
+_ZN8SandHook6AsmA6412A64_CBZ_CBNZ8AssembleEv | value=0x5df78 | addr=0x7bcd19ef78
+_ZN8SandHook11ArrayMemberIN3art6mirror9ArtMethodEPvE4initEP7_JNIEnvPS3_m | value=0x57b5c | addr=0x7bcd198b5c
+_ZN8SandHook3Asm4UnitI18A64_STRUCT_STP_LDPE5GetPCEv | value=0x60c5c | addr=0x7bcd1a1c5c
+_ZN8SandHook6AsmA6411A64_MOV_REGC2EPv | value=0x5ebd4 | addr=0x7bcd19fbd4
+_ZN8SandHook6AsmA6412A64_CBZ_CBNZC1EPv | value=0x5ddf8 | addr=0x7bcd19edf8
+_ZN8SandHook6AsmA6415A64_INST_PC_RELI17A64_STRUCT_B_CONDLj12EE20GetImmPCOffsetTargetEv | value=0x602cc | addr=0x7bcd1a12cc
+_ZN8SandHook6AsmA6414InstructionA64I18A64_STRUCT_LDR_IMMLj6EE4ArchEv | value=0x60ae0 | addr=0x7bcd1a1ae0
+_ZN8SandHook6AsmA6414InstructionA64I21A64_STRUCT_BR_BLR_RETLj13EE4SizeEv | value=0x605a8 | addr=0x7bcd1a15a8
+_ZN8SandHook6AsmA6417A64_EXCEPTION_GENC2ENS1_2OPENS0_14ExceptionLevelEt | value=0x5ef4c | addr=0x7bcd19ff4c
+_ZN8SandHook3Asm8RegisterINS0_17A64RegisterStructEE4IsFPEv | value=0x61004 | addr=0x7bcd1a2004
+_ZN8SandHook3Asm11InstructionI18A64_STRUCT_LDR_IMMLj6EE6UnknowEv | value=0x60af8 | addr=0x7bcd1a1af8
+_ZN8SandHook6AsmA6413A64_LDRSW_IMM8AssembleEv | value=0x5f65c | addr=0x7bcd1a065c
+_ZN8SandHook3Asm11InstructionI19A64_STRUCT_TBZ_TBNZLj15EE8UnitTypeEv | value=0x60370 | addr=0x7bcd1a1370
+_ZN8SandHook3Asm4UnitINS0_14STRUCT_DATA_64EE4SizeEv | value=0x5d8e0 | addr=0x7bcd19e8e0
+_ZN8SandHook3Asm11InstructionI24A64_STRUCT_EXCEPTION_GENLj17EE8InstCodeEv | value=0x60a0c | addr=0x7bcd1a1a0c
+_ZN8SandHook3Elf11TextSegmentC1EPvS2_ | value=0x59f10 | addr=0x7bcd19af10
+_ZN8SandHook6AsmA6411A64_STR_IMMC1EPv | value=0x5e734 | addr=0x7bcd19f734
+_ZN8SandHook3Asm11InstructionI18A64_STRUCT_LDR_IMMLj6EE8UnitTypeEv | value=0x60ac8 | addr=0x7bcd1a1ac8
+_ZN8SandHook9Assembler13CodeContainer13SetCodeBufferEPNS0_10CodeBufferE | value=0x5bd48 | addr=0x7bcd19cd48
+_ZN8SandHook6AsmA6411A64_STP_LDPC2ENS1_2OPERNS_3Asm11RegisterA64ES5_RKNS0_10MemOperandE | value=0x5f8b0 | addr=0x7bcd1a08b0
+_ZN8SandHook3Asm11InstructionI19A64_STRUCT_STR_UIMMLj10EE12OnLabelApplyEm | value=0x60794 | addr=0x7bcd1a1794
+_ZN8SandHook6AsmA6414InstructionA64I19A64_STRUCT_TBZ_TBNZLj15EE4SizeEv | value=0x60378 | addr=0x7bcd1a1378
+_ZN8SandHook20InlineHookTrampoline10codeLengthEv | value=0x54924 | addr=0x7bcd195924
+_ZN8SandHook9Assembler17AndroidCodeBufferC1Ev | value=0x5c224 | addr=0x7bcd19d224
+_ZN8SandHook3Asm4UnitI18A64_STRUCT_MSR_MRSE5GetPCEv | value=0x60e14 | addr=0x7bcd1a1e14
+_ZN8SandHook3Asm11InstructionI19A64_STRUCT_STR_UIMMLj10EE6UnknowEv | value=0x60788 | addr=0x7bcd1a1788
+_ZN8SandHook6AsmA6414InstructionA64I24A64_STRUCT_EXCEPTION_GENLj17EE4ArchEv | value=0x60a04 | addr=0x7bcd1a1a04
+_ZN8SandHook3Asm11InstructionI19A64_STRUCT_STR_UIMMLj10EE13OnOffsetApplyEl | value=0x60790 | addr=0x7bcd1a1790
+_ZN8SandHook6AsmA6412A64_ADR_ADRP20GetImmPCOffsetTargetEv | value=0x5da38 | addr=0x7bcd19ea38
+_ZN8SandHook3Asm11InstructionI24A64_STRUCT_EXCEPTION_GENLj17EE8PcRelateEv | value=0x60a14 | addr=0x7bcd1a1a14
+_ZN8SandHook3Asm4UnitI22A64_STRUCT_SUB_EXT_REGE4MoveEPS2_ | value=0x608fc | addr=0x7bcd1a18fc
+_ZN8SandHook3Asm15CodeRelocateA645VisitEPNS0_4UnitI4BaseEEPv | value=0x610a0 | addr=0x7bcd1a20a0
+_ZN8SandHook6AsmA6415A64_INST_PC_RELI17A64_STRUCT_B_CONDLj12EE8PcRelateEv | value=0x60280 | addr=0x7bcd1a1280
+_Z17nativeHookMethodsP7_JNIEnvP8_jobjecthii | value=0x4a908 | addr=0x7bcd18b908
+_ZN8SandHook6AsmA6412A64_CBZ_CBNZC2ENS1_2OPEPNS_3Asm5LabelERNS3_11RegisterA64E | value=0x5de60 | addr=0x7bcd19ee60
+_ZN8SandHook6AsmA6414InstructionA64I19A64_STRUCT_STR_UIMMLj10EE4SizeEv | value=0x60760 | addr=0x7bcd1a1760
+_ZN8SandHook6AsmA6417A64_EXCEPTION_GEN11DisassembleEv | value=0x5ef84 | addr=0x7bcd19ff84
+_ZN8SandHook9Assembler12AssemblerA642BlEl | value=0x5c9d0 | addr=0x7bcd19d9d0
+_ZN8SandHook6AsmA6411A64_STP_LDP11DisassembleEv | value=0x5f8f8 | addr=0x7bcd1a08f8
+_ZN8SandHook6AsmA6414InstructionA64I19A64_STRUCT_TBZ_TBNZLj15EE8InstTypeEv | value=0x60380 | addr=0x7bcd1a1380
+Java_com_swift_sandhook_SandHook_deCompileMethod | value=0x534bc | addr=0x7bcd1944bc
+_ZN3art6mirror9ArtMethod15getHotnessCountEv | value=0x58558 | addr=0x7bcd199558
+_ZN8SandHook3Asm11InstructionI18A64_STRUCT_STP_LDPLj19EE13OnOffsetApplyEl | value=0x60cb8 | addr=0x7bcd1a1cb8
+_ZN8SandHook6AsmA6411A64_MSR_MRSC2EPv | value=0x5fd4c | addr=0x7bcd1a0d4c
+_ZN8SandHook6AsmA6412A64_ADR_ADRPC2EPv | value=0x5d914 | addr=0x7bcd19e914
+_ZN8SandHook3Asm11InstructionI19A64_STRUCT_ADR_ADRPLj3EE8UnitTypeEv | value=0x5fe70 | addr=0x7bcd1a0e70
+_Z13hookJNIMethodP10_jmethodIDPvPS1_ | value=0x498f8 | addr=0x7bcd18a8f8
+_ZN8SandHook6AsmA6412A64_STR_UIMMC1ERNS_3Asm11RegisterA64ERKNS0_10MemOperandE | value=0x5ea04 | addr=0x7bcd19fa04
+_ZN8SandHook6AsmA6412A64_STR_UIMMC2EPv | value=0x5e9d4 | addr=0x7bcd19f9d4
+_ZN8SandHook3Asm11InstructionI19A64_STRUCT_MOV_WIDELj1EE6UnknowEv | value=0x5ff7c | addr=0x7bcd1a0f7c
+_ZN8SandHook3Asm11InstructionI19A64_STRUCT_STR_UIMMLj10EE8UnitTypeEv | value=0x60758 | addr=0x7bcd1a1758
+_ZN8SandHook6AsmA6410A64_B_CONDC2E9ConditionPNS_3Asm5LabelE | value=0x5e09c | addr=0x7bcd19f09c
+A64HookFunction | value=0x51478 | addr=0x7bcd192478
+_ZN8SandHook9Assembler13CodeContainer6CommitEv | value=0x5be14 | addr=0x7bcd19ce14
+_ZN8SandHook6AsmA6417A64_EXCEPTION_GENC1EPv | value=0x5ef1c | addr=0x7bcd19ff1c
+SandInlineHook | value=0x59b38 | addr=0x7bcd19ab38
+_ZN8SandHook9Assembler13CodeContainer6AppendEPNS_3Asm4UnitI4BaseEE | value=0x5bd50 | addr=0x7bcd19cd50
+Java_com_swift_sandhook_SandHook_skipAllSafeCheck | value=0x5360c | addr=0x7bcd19460c
+Java_com_swift_sandhook_SandHook_getObjectNative | value=0x5358c | addr=0x7bcd19458c
+_ZN8SandHook3Asm11InstructionI18A64_STRUCT_LDR_LITLj4EE8UnitTypeEv | value=0x60488 | addr=0x7bcd1a1488
+_ZN8SandHook17TrampolineManager13canSafeInlineEPN3art6mirror9ArtMethodE | value=0x53b14 | addr=0x7bcd194b14
+_ZN8SandHook9Assembler12AssemblerA644EmitEj | value=0x5c480 | addr=0x7bcd19d480
+_Z11startIOHookP7_JNIEnvi | value=0x46048 | addr=0x7bcd187048
+_ZN8SandHook6AsmA6414A64_BR_BLR_RETC1ENS1_2OPERNS_3Asm9XRegisterE | value=0x5e664 | addr=0x7bcd19f664
+_ZN8SandHook9Assembler12AssemblerA644EmitEm | value=0x5c430 | addr=0x7bcd19d430
+_ZN8SandHook6AsmA6415A64_SUB_EXT_REGC2EPv | value=0x5ed20 | addr=0x7bcd19fd20
+_ZN8SandHook9Assembler12AssemblerA64C1EPNS0_10CodeBufferE | value=0x5c3b0 | addr=0x7bcd19d3b0
+_ZN8SandHook20InlineHookTrampoline12templateCodeEv | value=0x5492c | addr=0x7bcd19592c
+_ZN8SandHook3Asm4UnitI17A64_STRUCT_B_CONDE6GetVPCEv | value=0x6023c | addr=0x7bcd1a123c
+_ZN8SandHook3Asm11InstructionI18A64_STRUCT_STP_LDPLj19EE8InstCodeEv | value=0x60ca0 | addr=0x7bcd1a1ca0
+_ZN8SandHook6AsmA6414InstructionA64I18A64_STRUCT_MSR_MRSLj21EE4ArchEv | value=0x60e50 | addr=0x7bcd1a1e50
+_ZN8SandHook6AsmA6414InstructionA64I19A64_STRUCT_STR_UIMMLj10EE8InstTypeEv | value=0x60768 | addr=0x7bcd1a1768
+_ZThn32_N8SandHook3Asm11InstructionI24A64_STRUCT_EXCEPTION_GENLj17EE12OnLabelApplyEm | value=0x60a64 | addr=0x7bcd1a1a64
+_ZN8SandHook3Asm11InstructionI19A64_STRUCT_TBZ_TBNZLj15EE12OnLabelApplyEm | value=0x603a8 | addr=0x7bcd1a13a8
+_ZN8SandHook3Asm11InstructionI17A64_STRUCT_UNKNOWLj0EE13OnOffsetApplyEl | value=0x62434 | addr=0x7bcd1a3434
+_ZN8SandHook3Asm11InstructionI24A64_STRUCT_EXCEPTION_GENLj17EE13OnOffsetApplyEl | value=0x60a24 | addr=0x7bcd1a1a24
+_ZN8SandHook9Assembler12AssemblerA643LdrERNS_3Asm11RegisterA64ERKNS_6AsmA6410MemOperandE | value=0x5cf34 | addr=0x7bcd19df34
+_ZN8SandHook6AsmA6411A64_LDR_LIT14GetImmPCOffsetEv | value=0x5e528 | addr=0x7bcd19f528
+_ZN8SandHook3Asm4UnitI22A64_STRUCT_SUB_EXT_REGE6GetVPCEv | value=0x608f4 | addr=0x7bcd1a18f4
+_ZN8SandHook6AsmA648A64_B_BLC1ENS1_2OPEl | value=0x5dc90 | addr=0x7bcd19ec90
+_ZN8SandHook3Asm4UnitI18A64_STRUCT_LDR_IMME4MoveEPS2_ | value=0x60ab4 | addr=0x7bcd1a1ab4
+_ZN8SandHook6AsmA6414InstructionA64I19A64_STRUCT_LDR_UIMMLj5EE4ArchEv | value=0x60bbc | addr=0x7bcd1a1bbc
+_ZN8SandHook3Asm11InstructionI17A64_STRUCT_B_CONDLj12EE6UnknowEv | value=0x60288 | addr=0x7bcd1a1288
+_ZN8SandHook6AsmA6412A64_MOV_WIDEC1ENS1_2OPEPNS_3Asm11RegisterA64Eth | value=0x5db08 | addr=0x7bcd19eb08
+_ZN3art6mirror9ArtMethod17getDexMethodIndexEv | value=0x584f8 | addr=0x7bcd1994f8
+nativeHookNoBackup | value=0x537c0 | addr=0x7bcd1947c0
+_ZN8SandHook9Assembler12AssemblerA643LdpERNS_3Asm11RegisterA64ES4_NS_6AsmA6410MemOperandE | value=0x5d428 | addr=0x7bcd19e428
+_ZN8SandHook6AsmA6412A64_LDR_UIMMC2ERNS_3Asm11RegisterA64ERKNS0_10MemOperandE | value=0x5f34c | addr=0x7bcd1a034c
+SandSingleInstHookSym | value=0x59d6c | addr=0x7bcd19ad6c
+_ZN8SandHook6AsmA6414InstructionA64I18A64_STRUCT_MSR_MRSLj21EE8InstTypeEv | value=0x60e48 | addr=0x7bcd1a1e48
+_ZN8SandHook9Assembler12AssemblerA643MovERNS_3Asm11RegisterA64ES4_ | value=0x5d704 | addr=0x7bcd19e704
+_ZN8SandHook6AsmA6412A64_ADR_ADRPC2ENS1_2OPERNS_3Asm9XRegisterEPNS3_5LabelE | value=0x5d97c | addr=0x7bcd19e97c
+_ZN8SandHook3Asm4UnitI19A64_STRUCT_CBZ_CBNZE6GetVPCEv | value=0x60124 | addr=0x7bcd1a1124
+_ZN8SandHook6AsmA6411A64_LDR_IMM11DisassembleEv | value=0x5f10c | addr=0x7bcd1a010c
+_ZN8SandHook6AsmA6412A64_TBZ_TBNZ13OnOffsetApplyEl | value=0x5e41c | addr=0x7bcd19f41c
+_ZN8SandHook9InstArm649pcRelatedEv | value=0x58ba8 | addr=0x7bcd199ba8
+_ZN8SandHook6AsmA6415A64_ADD_SUB_IMM11DisassembleEv | value=0x5fb98 | addr=0x7bcd1a0b98
+_Z20check_need_hack_hookPcii | value=0x4f46c | addr=0x7bcd19046c
+_ZN8SandHook6AsmA6411A64_STR_IMM8AssembleEv | value=0x5e89c | addr=0x7bcd19f89c
+_ZN8SandHook6AsmA6410A64_B_COND8AssembleEv | value=0x5e174 | addr=0x7bcd19f174
+_Z10hookLinkerPKc | value=0x48728 | addr=0x7bcd189728
+_ZN8SandHook6AsmA6411A64_LDR_LIT8AssembleEv | value=0x5e5d8 | addr=0x7bcd19f5d8
+[all exported function names — first 300]
+mprotect
+pthread_detach
+sigemptyset
+pthread_mutex_destroy
+atoi
+pthread_create
+strnlen
+pthread_join
+realloc
+gettid
+open
+pthread_key_create
+printf
+pthread_mutex_trylock
+pthread_once
+__cxa_finalize
+ftell
+mkdir
+calloc
+fread
+syslog
+pthread_cond_destroy
+strncmp
+posix_memalign
+read
+strtoul
+pthread_mutex_init
+pthread_equal
+abort
+__errno
+snprintf
+getpid
+perror
+dl_iterate_phdr
+strcat
+sscanf
+pthread_mutexattr_settype
+android_set_abort_message
+islower
+write
+getenv
+strrchr
+time
+memcmp
+pthread_cond_timedwait
+fclose
+lseek
+fputc
+__stack_chk_fail
+fgets
+fork
+dlclose
+feof
+pthread_mutexattr_init
+pthread_cond_wait
+nanosleep
+pthread_setspecific
+strncpy
+dlsym
+openlog
+__android_log_print
+unlink
+setenv
+sysconf
+strchr
+fseek
+strcmp
+pthread_mutexattr_destroy
+syscall
+fgetc
+sprintf
+strerror_r
+puts
+strncat
+sigaction
+pthread_mutex_lock
+mmap
+closelog
+pthread_getspecific
+memmove
+isxdigit
+getuid
+sched_yield
+strstr
+strdup
+strtok
+fdopen
+strlen
+exit
+close
+vasprintf
+remove
+dlopen
+stat
+munmap
+malloc
+memcpy
+connect
+memset
+fopen
+socket
+fwrite
+pthread_cond_broadcast
+free
+pthread_self
+strcpy
+execve
+__system_property_get
+pthread_cond_signal
+vfprintf
+pthread_mutex_unlock
+__cxa_atexit
+isspace
+_ZNSt6__ndk111this_thread9sleep_forERKNS_6chrono8durationIxNS_5ratioILl1ELl1000000000EEEEE
+_ZN3art6mirror9ArtMethod22disableInterpreterForOEv
+_ZN8SandHook3Asm9WRegisterC2Eh
+_ZN8SandHook13CastArtMethod4initEP7_JNIEnv
+_ZN8SandHook6AsmA6414InstructionA64I22A64_STRUCT_SUB_EXT_REGLj16EE4SizeEv
+_ZN7_JNIEnv16CallObjectMethodEP8_jobjectP10_jmethodIDz
+_ZN8SandHook3Asm11InstructionI18A64_STRUCT_MSR_MRSLj21EE8UnitTypeEv
+_ZN8SandHook9Assembler16StaticCodeBufferC1Em
+_ZN8SandHook6AsmA6414A64_BR_BLR_RET8AssembleEv
+_ZNSt6__ndk119__shared_weak_countD2Ev
+_ZNKSt9exception4whatEv
+_ZNSt6__ndk113unordered_setIPN3art6mirror9ArtMethodENS_4hashIS4_EENS_8equal_toIS4_EENS_9allocatorIS4_EEED2Ev
+_ZN8SandHook3Asm9WRegisterC2Ev
+_ZNSt16nested_exceptionD0Ev
+_ZNSt6__ndk117__assoc_sub_state13set_exceptionESt13exception_ptr
+_ZNSt6__ndk118condition_variable10notify_allEv
+SandSingleInstBreakPoint
+_Z15new_nativeLoadQP7_JNIEnvP7_jclassP8_jstringP8_jobjectS6_
+__cxa_uncaught_exception
+new_sigaction
+_ZNSt8bad_castD0Ev
+getBooleanFromJava
+_ZN3art6mirror9ArtMethod8isStaticEv
+_ZN8SandHook6AsmA6412A64_TBZ_TBNZC2ENS1_2OPERNS_3Asm11RegisterA64EjPNS3_5LabelE
+__cxa_end_catch
+_ZN8SandHook3Asm15CodeRelocateA6417relocate_TBZ_TBNZEPNS_6AsmA6412A64_TBZ_TBNZEPv
+fake_dlsym
+_ZNSt12out_of_rangeD0Ev
+_ZN8SandHook3Asm11InstructionI22A64_STRUCT_SUB_EXT_REGLj16EE8InstCodeEv
+_Z17add_readonly_itemPKc
+_ZN8SandHook3Asm11InstructionI19A64_STRUCT_CBZ_CBNZLj14EE8InstCodeEv
+_ZN8SandHook3Asm11InstructionI17A64_STRUCT_UNKNOWLj0EE8PcRelateEv
+_Z16private_api_hackv
+Java_com_swift_sandhook_SandHook_disableDex2oatInline
+_ZN8SandHook6AsmA6411A64_LDR_LIT11DisassembleEv
+_Z12findSyscallsPKciibPFbS0_iPvE
+_ZN8SandHook3Asm11InstructionI18A64_STRUCT_MSR_MRSLj21EE12OnLabelApplyEm
+_ZNSt9bad_allocD2Ev
+_ZN8SandHook9Assembler12AssemblerA643CmpERNS_3Asm11RegisterA64ERKNS_6AsmA647OperandE
+_ZN8SandHook3Asm11InstructionI19A64_STRUCT_LDR_UIMMLj5EE11DisassembleEv
+_ZN10__cxxabiv119__getExceptionClassEPK17_Unwind_Exception
+_ZN8SandHook3Asm4UnitI19A64_STRUCT_CBZ_CBNZE4MoveEPS2_
+__register_frame_info_table
+_ZN3art6mirror9ArtMethod26disableFastInterpreterForQEv
+_ZN8SandHook3Asm11InstructionI18A64_STRUCT_MSR_MRSLj21EE13OnOffsetApplyEl
+_ZN8SandHook3Asm4UnitI18A64_STRUCT_LDR_IMME5GetPCEv
+_ZNSt11logic_erroraSERKS_
+Java_com_swift_sandhook_SandHook_canGetObject
+_ZN8SandHook3Asm11InstructionI18A64_STRUCT_STR_IMMLj9EE8UnitTypeEv
+_ZN3art6mirror9ArtMethod10flushCacheEv
+_ZN8SandHook6AsmA6413A64_LDRSW_IMMC2ERNS_3Asm11RegisterA64ERKNS0_10MemOperandE
+new_fchmodat
+_ZNSt6__ndk119__shared_weak_count16__release_sharedEv
+_ZNSt16nested_exceptionC1Ev
+_ZN8SandHook21CastEntryPointFromJni9calOffsetEP7_JNIEnvPN3art6mirror9ArtMethodE
+_ZN8SandHook3Asm11InstructionI19A64_STRUCT_STR_UIMMLj10EE11DisassembleEv
+_ZN8SandHook6AsmA6415A64_ADD_SUB_IMMC1ENS1_2OPENS1_1SERNS_3Asm11RegisterA64ERKNS0_7OperandE
+_ZN8SandHook7IMemberIN3art15CompilerOptionsEmE13getParentSizeEv
+_ZN8SandHook6AsmA648A64_B_BL11DisassembleEv
+_ZNKSt6__ndk112bad_weak_ptr4whatEv
+new_faccessat
+_ZN8SandHook3Asm11InstructionI22A64_STRUCT_ADD_SUB_IMMLj20EE13OnOffsetApplyEl
+_ZN8SandHook6AsmA648A64_B_BL14GetImmPCOffsetEv
+_ZThn32_N8SandHook3Asm11InstructionI22A64_STRUCT_ADD_SUB_IMMLj20EE12OnLabelApplyEm
+_ZNSt8bad_castC1Ev
+_ZN8SandHook6AsmA6412A64_TBZ_TBNZ14GetImmPCOffsetEv
+_ZnwmSt11align_val_t
+replaceUpdateMethodsCode
+_ZN8SandHook6AsmA6412A64_LDR_UIMMC1EPv
+_Z22jni_nativeSetSystemPidP7_JNIEnvP7_jclassi
+_ZThn32_N8SandHook3Asm11InstructionI19A64_STRUCT_MOV_WIDELj1EE12OnLabelApplyEm
+_ZN8SandHook21PCRelatedCheckVisitor5visitEPNS_4InstEmm
+_ZN8SandHook6AsmA6414InstructionA64I17A64_STRUCT_B_CONDLj12EE4ArchEv
+_ZN8SandHook6AsmA6411A64_LDR_IMMC2ERNS_3Asm11RegisterA64ERKNS0_10MemOperandE
+new_do_dlopen_CIV
+new_symlinkat
+__cxa_guard_acquire
+_ZN8SandHook3Asm11InstructionI17A64_STRUCT_UNKNOWLj0EE8AssembleEv
+_ZNSt6__ndk112system_errorC1EiRKNS_14error_categoryERKNS_12basic_stringIcNS_11char_traitsIcEENS_9allocatorIcEEEE
+_ZN8SandHook6AsmA6411A64_LDR_LITC2ENS1_2OPERNS_3Asm11RegisterA64El
+_ZN8SandHook3Asm4UnitI21A64_STRUCT_BR_BLR_RETE6GetVPCEv
+_ZNSt6__ndk121undeclare_no_pointersEPcm
+_ZNSt6__ndk112system_errorC2EiRKNS_14error_categoryE
+_ZN8SandHook6AsmA6414A64_LDRSW_UIMMC2EPv
+_Unwind_GetGR
+_ZN8SandHook6AsmA6412A64_MOV_WIDEC2EPv
+_ZNSt13bad_exceptionD2Ev
+_Z22get_replace_item_countv
+_Z21hookRuntimeNativeLoadP7_JNIEnvi
+_Z12relocate_artP7_JNIEnvPKc
+_ZN8SandHook3Asm4UnitI18A64_STRUCT_MOV_REGE6GetVPCEv
+_ZN8SandHook7IMemberIN3art6mirror9ArtMethodEjE13getParentSizeEv
+__cxa_free_exception
+_ZNSt6__ndk17promiseIvE28set_exception_at_thread_exitESt13exception_ptr
+_ZNKSt6__ndk114error_category23default_error_conditionEi
+_ZN8SandHook9Assembler12AssemblerA642BlEPNS_3Asm5LabelE
+_ZN8SandHook6AsmA6410A64_B_CONDC1E9Conditionl
+_ZN8SandHook3Asm11InstructionI19A64_STRUCT_LDR_UIMMLj5EE6UnknowEv
+_ZN8SandHook6AsmA648A64_B_BLC2EPv
+_ZN8SandHook3Elf11TextSegmentC2EPvS2_
+_ZNSt16nested_exceptionD2Ev
+_Z6getEnvv
+_ZN8SandHook6ElfImgC2EPKc
+__cxa_free_dependent_exception
+_ZN8SandHook6AsmA6417A64_EXCEPTION_GEN8AssembleEv
+_ZN8SandHook19CastCompilerOptions4initEP7_JNIEnv
+_ZN8SandHook6AsmA6414InstructionA64I18A64_STRUCT_LDR_LITLj4EE4SizeEv
+_ZN8SandHook6AsmA6411A64_LDR_LITC1ENS1_2OPERNS_3Asm11RegisterA64El
+_ZN8SandHook6AsmA648A64_B_BL13OnOffsetApplyEl
+_ZNSt6__ndk112system_errorC2ENS_10error_codeEPKc
+_ZThn32_N8SandHook3Asm11InstructionI21A64_STRUCT_BR_BLR_RETLj13EE12OnLabelApplyEm
+new_mkdirat
+_ZNSt8bad_castD2Ev
+_ZThn32_N8SandHook3Asm11InstructionI22A64_STRUCT_SUB_EXT_REGLj16EE12OnLabelApplyEm
+_ZN8SandHook9Assembler12AssemblerA644CbnzERNS_3Asm11RegisterA64EPNS2_5LabelE
+_ZN15SocketIPCClient7connectEPKc
+_ZN8SandHook6AsmA6414InstructionA64I22A64_STRUCT_ADD_SUB_IMMLj20EE4SizeEv
+_ZN8SandHook7IMemberIN3art6mirror9ArtMethodEjE9getOffsetEv
+_ZNSt20bad_array_new_lengthD0Ev
+_ZN8SandHook3Asm4UnitI21A64_STRUCT_BR_BLR_RETE4MoveEPS2_
+_ZN8SandHook3Asm11InstructionI18A64_STRUCT_MOV_REGLj2EE8UnitTypeEv
+_ZN8SandHook9Assembler12AssemblerA643MrsERNS_3Asm14SystemRegisterERNS2_11RegisterA64E
+_ZN8SandHook6AsmA6412A64_ADR_ADRPC1ENS1_2OPERNS_3Asm9XRegisterEl
+_ZNSt14overflow_errorD0Ev
+_ZN8SandHook6AsmA6414InstructionA64I18A64_STRUCT_STP_LDPLj19EE8InstTypeEv
+_ZNSt12out_of_rangeD2Ev
+_ZN8SandHook3Asm11InstructionI19A64_STRUCT_MOV_WIDELj1EE8UnitTypeEv
+_ZN8SandHook9Assembler17AndroidCodeBuffer9GetBufferEj
+__cxa_get_exception_ptr
+_ZN8SandHook6AsmA6411A64_LDR_LITC1ENS1_2OPERNS_3Asm11RegisterA64EPNS3_5LabelE
+_ZNSt15underflow_errorD0Ev
+_ZN8SandHook3Asm4UnitINS0_14STRUCT_DATA_32EE6GetVPCEv
+Java_com_swift_sandhook_ClassNeverCall_neverCallNative2
+_ZN8SandHook3Asm11InstructionI19A64_STRUCT_ADR_ADRPLj3EE13OnOffsetApplyEl
+_Unwind_GetIP
+_Z28new_tss_sdk_gen_session_dataPhm
+new_is_accessible
+_ZNSt6__ndk112system_errorC2EiRKNS_14error_categoryERKNS_12basic_stringIcNS_11char_traitsIcEENS_9allocatorIcEEEE
+_ZN11IOUniformer19init_env_before_allEv
+_Z21reverse_relocate_pathPKcPcm
+_ZNSt6__ndk125notify_all_at_thread_exitERNS_18condition_variableENS_11unique_lockINS_5mutexEEE
+_ZNSt6__ndk16__treeINS_12__value_typeINS_12basic_stringIcNS_11char_traitsIcEENS_9allocatorIcEEEES7_EENS_19__map_value_compareIS7_S8_NS_4lessIS7_EELb1EEENS5_IS8_EEE7destroyEPNS_11__tree_nodeIS8_PvEE
+_ZNSt6__ndk18__sp_mut4lockEv
+_ZN3art6mirror9ArtMethod23setInterpreterCodeEntryEPv
+_ZN7_JNIEnv13CallIntMethodEP8_jobjectP10_jmethodIDz
+_ZN8SandHook7Decoder14DefaultVisitorC2ENSt6__ndk18functionIFbPNS_3Asm11InstructionI4BaseLj0EEEPvEEE
+_Z13add_keep_itemPKc
+_ZN3art6mirror9ArtMethod23getInterpreterCodeEntryEv
+_ZN3art6mirror9ArtMethod10isAbstractEv
+_ZN8SandHook3Asm9XRegisterC1Eh
+_ZN15SocketIPCClient13getCallingUidEiiii
+_ZN8SandHook7Decoder14DefaultVisitor5VisitEPNS_3Asm4UnitI4BaseEEPv
+_ZN8SandHook6AsmA6414InstructionA64I19A64_STRUCT_ADR_ADRPLj3EE4SizeEv
+_ZN8SandHook10InstDecode6decodeEPvmPNS_11InstVisitorE
+_ZN8SandHook3Asm4UnitI19A64_STRUCT_STR_UIMME5GetPCEv
+_Z17hookGetCallingPidP7_JNIEnv
+_ZN3art6mirror9ArtMethod22setDexCacheResolveListEPv
+_ZNSt20bad_array_new_lengthC1Ev
+_ZN8SandHook6AsmA6414InstructionA64I17A64_STRUCT_B_CONDLj12EE8InstTypeEv
+_Z21new_tp2_setgamestatusi
+_ZNSt11logic_errorC1ERKS_
+_ZN8SandHook6AsmA6411A64_LDR_IMMC1EPv
+_ZNSt6__ndk115recursive_mutex4lockEv
+_ZN8SandHook3Asm9XRegisterC1Ev
+_Unwind_GetIPInfo
+_ZN8SandHook20DirectJumpTrampoline12templateCodeEv
+_ZN8SandHook3Asm11InstructionI22A64_STRUCT_ADD_SUB_IMMLj20EE8UnitTypeEv
+_ZN8SandHook9Assembler12AssemblerA644MovzERNS_3Asm11RegisterA64EmNS_6AsmA6412A64_MOV_WIDE5ShiftE
+_ZN3art6mirror9ArtMethod7compileEP7_JNIEnv
+_ZN8SandHook6AsmA6414InstructionA64I18A64_STRUCT_LDR_IMMLj6EE4SizeEv
+_ZN8SandHook7IMemberIN3art6mirror9ArtMethodEtE13getParentSizeEv
+_ZN8SandHook3Asm11InstructionI15A64_STRUCT_B_BLLj11EE8UnitTypeEv
+_Z16new_tp2_sdk_initi
+_ZN8SandHook3Asm11InstructionI18A64_STRUCT_MSR_MRSLj21EE8PcRelateEv
+_ZN8SandHook3Asm4UnitI15A64_STRUCT_B_BLE5GetPCEv
+callStaticMethodAddr
+_ZN3art6mirror9ArtMethod15setJniCodeEntryEPv
+_ZN8SandHook6AsmA6415A64_SUB_EXT_REG11DisassembleEv
+_ZN11IOUniformer6forbidEPKc
+_ZN8SandHook10Trampoline4initEv
+_ZN8SandHook3Asm15CodeRelocateA648RelocateEPvmS2_
+_Z37lds_new_function_line_init_global_dvmPPKvPvS0_S2_
+MemUnprotect
+_ZN11IOUniformer8readOnlyEPKc
+_ZN3art6mirror9ArtMethod10setPrivateEv
+_ZN8SandHook9Assembler12AssemblerA641BE9ConditionPNS_3Asm5LabelE
+Java_com_swift_sandhook_SandHook_setHookMode
+(limited to 300)
+
+[libgspace_64.so JNI EXPORTS]
+module: libgspace_64.so
+loaded: YES
+base: 0x7bcd141000
+[Java_com_* JNI exports]
+Java_com_swift_sandhook_SandHook_disableDex2oatInline | value=0x53674 | runtime=0x7bcd194674
+Java_com_swift_sandhook_SandHook_canGetObject | value=0x535c8 | runtime=0x7bcd1945c8
+Java_com_swift_sandhook_ClassNeverCall_neverCallNative2 | value=0x537b8 | runtime=0x7bcd1947b8
+Java_com_swift_sandhook_SandHook_setHookMode | value=0x535e0 | runtime=0x7bcd1945e0
+Java_com_swift_sandhook_SandHook_deCompileMethod | value=0x534bc | runtime=0x7bcd1944bc
+Java_com_swift_sandhook_SandHook_skipAllSafeCheck | value=0x5360c | runtime=0x7bcd19460c
+Java_com_swift_sandhook_SandHook_getObjectNative | value=0x5358c | runtime=0x7bcd19458c
+Java_com_swift_sandhook_SandHook_addPendingHookNative | value=0x538e8 | runtime=0x7bcd1948e8
+Java_com_swift_sandhook_SandHook_setNativeEntry | value=0x53694 | runtime=0x7bcd194694
+Java_com_swift_sandhook_SandHook_MakeInitializedClassVisibilyInitialized | value=0x53860 | runtime=0x7bcd194860
+Java_com_swift_sandhook_SandHook_initNative | value=0x53158 | runtime=0x7bcd194158
+Java_com_swift_sandhook_SandHook_initForPendingHook | value=0x5372c | runtime=0x7bcd19472c
+Java_com_swift_sandhook_ClassNeverCall_neverCallNative | value=0x537b4 | runtime=0x7bcd1947b4
+Java_com_swift_sandhook_SandHook_compileMethod | value=0x533e0 | runtime=0x7bcd1943e0
+Java_com_swift_sandhook_SandHook_is64Bit | value=0x53628 | runtime=0x7bcd194628
+Java_com_swift_sandhook_SandHook_disableVMInline | value=0x53630 | runtime=0x7bcd194630
+Java_com_swift_sandhook_SandHook_setInlineSafeCheck | value=0x535f0 | runtime=0x7bcd1945f0
+Java_com_swift_sandhook_SandHook_hookMethod | value=0x531d8 | runtime=0x7bcd1941d8
+Java_com_swift_sandhook_test_TestClass_jni_1test | value=0x537bc | runtime=0x7bcd1947bc
+Java_com_swift_sandhook_SandHook_ensureMethodCached | value=0x5338c | runtime=0x7bcd19438c
+count: 20
+
+[Process]
+self cmdline: com.erfansst3.xposedbridgeexample                                                                  
+parent pid: 1328
+relevant parent cmdline: NONE
