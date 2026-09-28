@@ -47,6 +47,8 @@ static long gLibcShared=0,gLibcPrivate=0,gLinkerShared=0,gLinkerPrivate=0;
 static bool gLibcSeen=false,gLinkerSeen=false;
 static std::atomic<int> gTestFd{-1};
 static std::atomic<int> gBufferHookHits{0};
+static std::atomic<int> gEnvironHookHits{0};
+static std::atomic<bool> gEnvironInjected{false};
 
 static void logLine(const std::string&s){
     std::lock_guard<std::mutex> lock(gMutex);
@@ -95,7 +97,12 @@ static ssize_t hookedRead(int fd,void*buf,size_t n){
         ++gSmapsHookHits;
         gSmapsBytes+=r;
     }
-    if(r>0&&fd==gTestFd.load()){
+    if(r>0&&fd==gTestFd.load()&&!gEnvironInjected.load()){
+        const char m[]="\0VSPACE_HOOK=1\0";
+        size_t ml=sizeof(m)-1;
+        if((size_t)r+ml<=n){std::memcpy((char*)buf+r,m,ml);r+=(ssize_t)ml;gEnvironInjected=true;++gEnvironHookHits;}
+    }
+    if(r>0&&fd==gTestFd.load()&&gEnvironInjected.load()){
         char* p=(char*)buf;
         const char* a="Shared_Dirty: 16 kB";
         const char* b="Private_Dirty: 20 kB";
@@ -295,6 +302,7 @@ static std::string snapshot(){
     s+="local_read_hook="+std::string(gReadInstalled?"YES":"NO")+"\n";
     s+="hook_hits="+std::to_string(gHookHits.load())+"\n";
     s+="buffer_hook_hits="+std::to_string(gBufferHookHits.load())+"\n";
+    s+="environ_hook_hits="+std::to_string(gEnvironHookHits.load())+"\n";
     s+="smaps_hook_hits="+std::to_string(gSmapsHookHits.load())+"\n";
     s+="smaps_libc_shared_dirty="+std::to_string(gLibcShared)+" kB\n";
     s+="smaps_libc_private_dirty="+std::to_string(gLibcPrivate)+" kB\n";
@@ -324,13 +332,42 @@ extern "C" JNIEXPORT jstring JNICALL Java_com_erfansst_procmapdetector_MainActiv
     auto s=runHookTest();return env->NewStringUTF(s.c_str());
 }
 
+extern "C" JNIEXPORT jstring JNICALL Java_com_erfansst_procmapdetector_MainActivity_hookEnvironment(JNIEnv*env,jobject){
+    if(!installHooks())return env->NewStringUTF("HOOK FAILED\n"+snapshot());
+    gEnvironHookHits=0;
+    gEnvironInjected=false;
+    logLine("ENV HOOK PID="+std::to_string(getpid())+" INSTALLED");
+    return env->NewStringUTF(snapshot().c_str());
+}
+
+extern "C" JNIEXPORT jstring JNICALL Java_com_erfansst_procmapdetector_MainActivity_readEnvironment(JNIEnv*env,jobject){
+    if(!gReadInstalled)return env->NewStringUTF("HOOK first");
+    gEnvironHookHits=0;
+    gEnvironInjected=false;
+    char b[65536]={0};
+    int fd=syscall(SYS_openat,AT_FDCWD,"/proc/self/environ",O_RDONLY|O_CLOEXEC,0);
+    if(fd<0)return env->NewStringUTF("OPEN FAILED");
+    gTestFd=fd;
+    ssize_t n=gLibcRead(fd,b,sizeof(b)-1);
+    gTestFd=-1;
+    syscall(SYS_close,fd);
+    if(n<0)return env->NewStringUTF("READ FAILED");
+    const char marker[]="VSPACE_HOOK=1";
+    bool found=false;
+    for(ssize_t i=0;i+sizeof(marker)-1<=n;i++)if(!std::memcmp(b+i,marker,sizeof(marker)-1)){found=true;break;}
+    for(ssize_t i=0;i<n;i++)if(b[i]==0)b[i]='\n';
+    std::string out="PID="+std::to_string(getpid())+"\nHOOK_INSTALLED="+(gReadInstalled?"YES":"NO")+"\nHOOK_HITS="+std::to_string(gEnvironHookHits.load())+"\nMARKER="+(found?"FOUND":"NOT_FOUND")+"\nDATA\n"+std::string(b,(size_t)n);
+    logLine("ENV READ PID="+std::to_string(getpid())+" marker="+(found?"FOUND":"NOT_FOUND"));
+    return env->NewStringUTF(out.c_str());
+}
+
 extern "C" JNIEXPORT jstring JNICALL Java_com_erfansst_procmapdetector_MainActivity_getLog(JNIEnv*env,jobject){
     auto s=snapshot();return env->NewStringUTF(s.c_str());
 }
 
 extern "C" JNIEXPORT jstring JNICALL Java_com_erfansst_procmapdetector_MainActivity_clearLog(JNIEnv*env,jobject){
     {std::lock_guard<std::mutex>lock(gMutex);gLog.clear();}
-    gHookHits=0;gTestRuns=0;gSmapsHookHits=0;gSmapsBytes=0;gBufferHookHits=0;
+    gHookHits=0;gTestRuns=0;gSmapsHookHits=0;gSmapsBytes=0;gBufferHookHits=0;gEnvironHookHits=0;gEnvironInjected=false;
     gLibcShared=gLibcPrivate=gLinkerShared=gLinkerPrivate=0;
     gLibcSeen=gLinkerSeen=false;
     return env->NewStringUTF(snapshot().c_str());
