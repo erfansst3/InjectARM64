@@ -18,7 +18,6 @@ static ReadFn gRead=nullptr;
 static std::atomic<int> gProbeFd{-1};
 static std::atomic<int> gHits{0};
 static bool gInstalled=false;
-static std::atomic<bool> gAutoTried{false};
 
 static std::string hex(uintptr_t v){
 char b[32];snprintf(b,sizeof(b),"0x%llx",(unsigned long long)v);return b;
@@ -30,10 +29,10 @@ C c{name,0};
 auto cb=[](dl_phdr_info*i,size_t,void*p)->int{
 C*c=(C*)p;
 if(!i->dlpi_name||!strstr(i->dlpi_name,"libgspace_64.so"))return 0;
-const ElfW(Phdr)*dynPhdr=nullptr;
-for(int n=0;n<i->dlpi_phnum;n++)if(i->dlpi_phdr[n].p_type==PT_DYNAMIC){dynPhdr=&i->dlpi_phdr[n];break;}
-if(!dynPhdr)return 0;
-auto*d=(ElfW(Dyn)*)(i->dlpi_addr+dynPhdr->p_vaddr);
+const ElfW(Phdr)*ph=nullptr;
+for(int n=0;n<i->dlpi_phnum;n++)if(i->dlpi_phdr[n].p_type==PT_DYNAMIC){ph=&i->dlpi_phdr[n];break;}
+if(!ph)return 0;
+auto*d=(ElfW(Dyn)*)(i->dlpi_addr+ph->p_vaddr);
 ElfW(Sym)*st=nullptr;const char*str=nullptr;size_t sz=0;ElfW(Word)*hash=nullptr;
 for(;d->d_tag!=DT_NULL;d++)switch(d->d_tag){
 case DT_SYMTAB:st=(ElfW(Sym)*)(i->dlpi_addr+d->d_un.d_ptr);break;
@@ -77,23 +76,12 @@ gInstalled=true;
 return true;
 }
 
-__attribute__((constructor)) static void autoHook(){
-if(gAutoTried.exchange(true))return;
-for(int i=0;i<20&&!gInstalled;i++){
-if(install())break;
-usleep(100000);
-}
+extern "C" JNIEXPORT jboolean JNICALL Java_com_erfansst_procmapdetector_MainActivity_installHook(JNIEnv*,jobject){
+return install()?JNI_TRUE:JNI_FALSE;
 }
 
-extern "C" JNIEXPORT jstring JNICALL Java_com_erfansst_procmapdetector_MainActivity_hookEnvironment(JNIEnv*e,jobject){
-bool ok=install();
-std::string s="PID="+std::to_string(getpid())+"\n";
-s+="GSPACE_HOOK_API="+std::string(gHook?"YES":"NO")+"\n";
-s+="LIBC_READ="+std::string(gRead?"YES":"NO")+"\n";
-s+="READ_HOOK="+std::string(ok?"INSTALLED":"FAILED")+"\n";
-s+="AUTO_HOOK="+std::string(gInstalled?"ACTIVE":"INACTIVE")+"\n";
-s+="READ_ADDR="+hex((uintptr_t)gRead);
-return e->NewStringUTF(s.c_str());
+extern "C" JNIEXPORT jboolean JNICALL Java_com_erfansst_procmapdetector_MainActivity_autoHookIfArmed(JNIEnv*,jobject,jboolean armed){
+return armed&&install()?JNI_TRUE:JNI_FALSE;
 }
 
 extern "C" JNIEXPORT jstring JNICALL Java_com_erfansst_procmapdetector_MainActivity_readEnvironment(JNIEnv*e,jobject){
@@ -106,10 +94,22 @@ ssize_t n=gRead(fd,b,sizeof(b));
 gProbeFd=-1;
 syscall(SYS_close,fd);
 std::string s="PID="+std::to_string(getpid())+"\n";
+s+="GSPACE_HOOK_API="+std::string(gHook?"YES":"NO")+"\n";
+s+="LIBC_READ="+std::string(gRead?"YES":"NO")+"\n";
+s+="READ_HOOK="+std::string(gInstalled?"INSTALLED":"NOT_INSTALLED")+"\n";
 s+="READ_ADDR="+hex((uintptr_t)gRead)+"\n";
 s+="READ_RESULT="+std::to_string(n)+"\n";
 s+="HOOK_CALLBACK_HITS="+std::to_string(gHits.load())+"\n";
 s+="HOOK_STATUS="+std::string(gHits.load()?"ACTIVE":"NOT_ACTIVE");
+return e->NewStringUTF(s.c_str());
+}
+
+extern "C" JNIEXPORT jstring JNICALL Java_com_erfansst_procmapdetector_MainActivity_hookEnvironment(JNIEnv*e,jobject){
+bool ok=install();
+std::string s="PID="+std::to_string(getpid())+"\n";
+s+="GSPACE_HOOK_API="+std::string(gHook?"YES":"NO")+"\n";
+s+="LIBC_READ="+std::string(gRead?"YES":"NO")+"\n";
+s+="READ_HOOK="+std::string(ok?"INSTALLED":"FAILED");
 return e->NewStringUTF(s.c_str());
 }
 
