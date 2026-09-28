@@ -30,7 +30,8 @@ copy.setOnClickListener(v->copyLog());
 runInstall();
 h.post(refresh);
 }
-final Runnable refresh=()->{if(auto){runRead();h.postDelayed(refresh,1000);}};
+final Runnable refresh;
+{refresh=()->{if(auto){runRead();h.postDelayed(refresh,1000);}};}
 void runInstall(){new Thread(()->{String r=installHook();runOnUiThread(()->out.setText(r));}).start();}
 void runRead(){new Thread(()->{String r=triggerSmaps();runOnUiThread(()->out.setText(r));}).start();}
 void copyLog(){String s=out.getText().toString();ClipboardManager cm=(ClipboardManager)getSystemService(Context.CLIPBOARD_SERVICE);cm.setPrimaryClip(ClipData.newPlainText("Smaps Hook Log",s));Toast.makeText(this,"Log copied",Toast.LENGTH_SHORT).show();}
