@@ -110,7 +110,7 @@ auto cb=[](struct dl_phdr_info* info,size_t,void* opaque)->int{
 Ctx* c=reinterpret_cast<Ctx*>(opaque);
 if(!info->dlpi_name||!strstr(info->dlpi_name,"libgspace_64.so"))return 0;
 
-const Elf64_Phdr* dynPhdr=nullptr;
+const ElfW(Phdr)* dynPhdr=nullptr;
 for(int i=0;i<info->dlpi_phnum;i++){
 if(info->dlpi_phdr[i].p_type==PT_DYNAMIC){
 dynPhdr=&info->dlpi_phdr[i];
@@ -119,26 +119,26 @@ break;
 }
 if(!dynPhdr)return 0;
 
-auto dyn=reinterpret_cast<Elf64_Dyn*>(info->dlpi_addr+dynPhdr->p_vaddr);
-Elf64_Sym* symtab=nullptr;
+auto dyn=reinterpret_cast<ElfW(Dyn)*>(info->dlpi_addr+dynPhdr->p_vaddr);
+ElfW(Sym)* symtab=nullptr;
 const char* strtab=nullptr;
 size_t strsz=0;
 Elf64_Word* hash=nullptr;
 
-for(Elf64_Dyn* d=dyn;d->d_tag!=DT_NULL;d++){
-if(d->d_tag==DT_SYMTAB) symtab=reinterpret_cast<Elf64_Sym*>(info->dlpi_addr+d->d_un.d_ptr);
+for(ElfW(Dyn)* d=dyn;d->d_tag!=DT_NULL;d++){
+if(d->d_tag==DT_SYMTAB) symtab=reinterpret_cast<ElfW(Sym)*>(info->dlpi_addr+d->d_un.d_ptr);
 else if(d->d_tag==DT_STRTAB) strtab=reinterpret_cast<const char*>(info->dlpi_addr+d->d_un.d_ptr);
 else if(d->d_tag==DT_STRSZ) strsz=(size_t)d->d_un.d_val;
-else if(d->d_tag==DT_HASH) hash=reinterpret_cast<Elf64_Word*>(info->dlpi_addr+d->d_un.d_ptr);
+else if(d->d_tag==DT_HASH) hash=reinterpret_cast<ElfW(Word)*>(info->dlpi_addr+d->d_un.d_ptr);
 }
 if(!symtab||!strtab||!strsz||!hash)return 0;
 
 for(size_t i=0;i<hash[1];i++){
-const Elf64_Sym& s=symtab[i];
+const ElfW(Sym)& s=symtab[i];
 if(!s.st_name||s.st_name>=strsz||s.st_shndx==SHN_UNDEF)continue;
 const char* n=strtab+s.st_name;
 if(strcmp(n,c->target)!=0)continue;
-if(ELF64_ST_TYPE(s.st_info)!=STT_FUNC)continue;
+if(ELFW(ST_TYPE)(s.st_info)!=STT_FUNC)continue;
 c->addr=(uintptr_t)(info->dlpi_addr+s.st_value);
 c->found=true;
 return 1;
