@@ -4,3 +4,4 @@ Native detector for /proc/<pid>/maps. It lists visible PIDs, readable maps and m
 
 CI build configuration fixed.
 Build workflow refreshed.
+Memory permission probe added.
