@@ -123,7 +123,7 @@ auto dyn=reinterpret_cast<ElfW(Dyn)*>(info->dlpi_addr+dynPhdr->p_vaddr);
 ElfW(Sym)* symtab=nullptr;
 const char* strtab=nullptr;
 size_t strsz=0;
-Elf64_Word* hash=nullptr;
+ElfW(Word)* hash=nullptr;
 
 for(ElfW(Dyn)* d=dyn;d->d_tag!=DT_NULL;d++){
 if(d->d_tag==DT_SYMTAB) symtab=reinterpret_cast<ElfW(Sym)*>(info->dlpi_addr+d->d_un.d_ptr);
