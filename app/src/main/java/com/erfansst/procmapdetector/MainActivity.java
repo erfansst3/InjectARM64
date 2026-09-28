@@ -26,13 +26,17 @@ public class MainActivity extends Activity {
         LinearLayout bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.HORIZONTAL);
 
-        Button test = new Button(this);
-        test.setText("RUN HOOK + SMAPS");
+        Button hook = new Button(this);
+        hook.setText("HOOK");
+
+        Button read = new Button(this);
+        read.setText("READ");
 
         Button copy = new Button(this);
         copy.setText("COPY LOG");
 
-        bar.addView(test, new LinearLayout.LayoutParams(0, -2, 1));
+        bar.addView(hook, new LinearLayout.LayoutParams(0, -2, 1));
+        bar.addView(read, new LinearLayout.LayoutParams(0, -2, 1));
         bar.addView(copy, new LinearLayout.LayoutParams(0, -2, 1));
 
         out = new TextView(this);
@@ -49,13 +53,21 @@ public class MainActivity extends Activity {
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
         setContentView(root);
 
-        test.setOnClickListener(v -> runTest());
+        hook.setOnClickListener(v -> runHook());
+        read.setOnClickListener(v -> runRead());
         copy.setOnClickListener(v -> copyLog());
     }
 
-    void runTest() {
+    void runHook() {
         new Thread(() -> {
-            String result = runHookTest();
+            String result = hookEnvironment();
+            runOnUiThread(() -> out.setText(result));
+        }).start();
+    }
+
+    void runRead() {
+        new Thread(() -> {
+            String result = readEnvironment();
             runOnUiThread(() -> out.setText(result));
         }).start();
     }
@@ -69,6 +81,8 @@ public class MainActivity extends Activity {
     }
 
     public native String runHookTest();
+    public native String hookEnvironment();
+    public native String readEnvironment();
     public native String getLog();
     public native String clearLog();
 }
