@@ -173,7 +173,7 @@ logLine(std::string("ELF ")+target+
 " value=0x"+std::to_string((unsigned long long)s.st_value)+
 " addr=0x"+std::to_string((unsigned long long)addr)+
 " bind="+symBind(ELF64_ST_BIND(s.st_info))+
-" vis="+symVis(ELF64_ST_VISIBILITY(s.st_other))+
+" vis="+symVis((s.st_other & 0x3))+
 " type="+symType(ELF64_ST_TYPE(s.st_info))+
 " shndx="+std::to_string((unsigned)s.st_shndx));
 break;
