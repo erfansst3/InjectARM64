@@ -10,7 +10,7 @@ public class MainActivity extends Activity{
 TextView out;
 android.os.Handler h=new android.os.Handler(android.os.Looper.getMainLooper());
 boolean auto=true;
-static{System.loadLibrary("gspace_64");}
+static{System.loadLibrary("procmap_test");}
 final Runnable refresh=new Runnable(){public void run(){if(auto){runRead();h.postDelayed(this,1000);}}};
 public void onCreate(Bundle b){
 super.onCreate(b);
