@@ -1,241 +1,272 @@
 #include <jni.h>
 #include <android/log.h>
-#include <dlfcn.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <cerrno>
+#include <cstdio>
 #include <cstring>
 #include <string>
-#include <cstdio>
 #include <mutex>
 #include <atomic>
 #include <link.h>
 #include <elf.h>
-#include <algorithm>
-#include <cctype>
+#include <cstdint>
 
-#define TAG "SmapsHookTest"
-using MSHookFunctionFn=void(*)(void*,void*,void**);
-using ProbeFn=int(*)();
+#define TAG "GspaceHookTest"
 
-static MSHookFunctionFn gMSHookFunction=nullptr;
-static ProbeFn gOriginalProbe=nullptr;
+using MSHookFunctionFn = void(*)(void*, void*, void**);
+using TestFn = int(*)(int);
+
+static MSHookFunctionFn gMSHookFunction = nullptr;
+static TestFn gOriginalTest = nullptr;
 static std::mutex gMutex;
 static std::string gLog;
 static std::atomic<int> gHookHits{0};
-static std::atomic<int> gProbeRuns{0};
-static bool gInstalled=false;
-static bool gApiFound=false;
+static std::atomic<int> gTestRuns{0};
+static bool gInstalled = false;
+static bool gApiFound = false;
 static std::string gGspacePath;
+static uintptr_t gGspaceBase = 0;
 
-static void logLine(const std::string& s){
-std::lock_guard<std::mutex> lock(gMutex);
-gLog+=s+"\n";
-__android_log_print(ANDROID_LOG_INFO,TAG,"%s",s.c_str());
+static void logLine(const std::string& s) {
+    std::lock_guard<std::mutex> lock(gMutex);
+    gLog += s + "\n";
+    __android_log_print(ANDROID_LOG_INFO, TAG, "%s", s.c_str());
 }
 
-static bool findLoadedGspace(std::string& path){
-FILE* f=fopen("/proc/self/maps","r");
-if(!f)return false;
-char line[2048];
-while(fgets(line,sizeof(line),f)){
-if(strstr(line,"/libgspace_64.so")){
-char* p=strchr(line,'/');
-if(p){
-char* nl=strchr(p,'\n');
-if(nl)*nl=0;
-path=p;
-fclose(f);
-return true;
-}
-}
-}
-fclose(f);
-return false;
+static std::string hexAddr(uintptr_t value) {
+    char buf[32];
+    std::snprintf(buf, sizeof(buf), "0x%llx",
+                  static_cast<unsigned long long>(value));
+    return std::string(buf);
 }
 
-static int phdrCallback(struct dl_phdr_info* info,size_t,void*){
-if(info->dlpi_name&&strstr(info->dlpi_name,"libgspace_64.so")){
-logLine("GSPACE_ELF: loaded="+std::string(info->dlpi_name));
-logLine("GSPACE_ELF: base=0x"+std::to_string((unsigned long long)info->dlpi_addr));
-}
-return 0;
+static __attribute__((noinline, used)) int hookTarget(int value) {
+    return value * 3 + 7;
 }
 
-static void enumerateLoaded(){
-dl_iterate_phdr(phdrCallback,nullptr);
+static int hookedTarget(int value) {
+    ++gHookHits;
+    logLine("HOOK CALLBACK: hookTarget(" + std::to_string(value) + ")");
+    const int original = gOriginalTest ? gOriginalTest(value) : -1;
+    logLine("HOOK CALLBACK: original=" + std::to_string(original));
+    return original + 1000;
 }
 
-static const char* symType(unsigned t){
-switch(t){
-case STT_NOTYPE:return "NOTYPE";
-case STT_OBJECT:return "OBJECT";
-case STT_FUNC:return "FUNC";
-case STT_SECTION:return "SECTION";
-case STT_FILE:return "FILE";
-#ifdef STT_GNU_IFUNC
-case STT_GNU_IFUNC:return "IFUNC";
-#endif
-default:return "OTHER";
-}
-}
+static bool resolveGspaceSymbol(const char* target, uintptr_t& outAddr) {
+    struct Context {
+        const char* target;
+        uintptr_t symbolAddr;
+        bool found;
+    };
 
-static const char* symBind(unsigned b){
-switch(b){
-case STB_LOCAL:return "LOCAL";
-case STB_GLOBAL:return "GLOBAL";
-case STB_WEAK:return "WEAK";
-#ifdef STB_GNU_UNIQUE
-case STB_GNU_UNIQUE:return "UNIQUE";
-#endif
-default:return "OTHER";
-}
-}
+    Context ctx{target, 0, false};
 
-static const char* symVis(unsigned v){
-switch(v){
-case STV_DEFAULT:return "DEFAULT";
-case STV_INTERNAL:return "INTERNAL";
-case STV_HIDDEN:return "HIDDEN";
-case STV_PROTECTED:return "PROTECTED";
-default:return "OTHER";
-}
-}
+    auto callback = [](struct dl_phdr_info* info, size_t, void* opaque) -> int {
+        auto* c = reinterpret_cast<Context*>(opaque);
 
-static bool resolveGspaceSymbol(const char* target,uintptr_t& outAddr){
-struct Ctx{const char* target;uintptr_t addr;bool found;};
-Ctx ctx{target,0,false};
+        if (!info->dlpi_name ||
+            !std::strstr(info->dlpi_name, "libgspace_64.so")) {
+            return 0;
+        }
 
-auto cb=[](struct dl_phdr_info* info,size_t,void* opaque)->int{
-Ctx* c=reinterpret_cast<Ctx*>(opaque);
-if(!info->dlpi_name||!strstr(info->dlpi_name,"libgspace_64.so"))return 0;
+        if (!gGspacePath.empty()) {
+            // Already resolved this ELF.
+        } else {
+            gGspacePath = info->dlpi_name;
+            gGspaceBase = static_cast<uintptr_t>(info->dlpi_addr);
+            logLine("GSPACE: " + gGspacePath);
+            logLine("GSPACE base=" + hexAddr(gGspaceBase));
+        }
 
-const ElfW(Phdr)* dynPhdr=nullptr;
-for(int i=0;i<info->dlpi_phnum;i++){
-if(info->dlpi_phdr[i].p_type==PT_DYNAMIC){
-dynPhdr=&info->dlpi_phdr[i];
-break;
-}
-}
-if(!dynPhdr)return 0;
+        const ElfW(Phdr)* dynamicPhdr = nullptr;
+        for (int i = 0; i < info->dlpi_phnum; ++i) {
+            if (info->dlpi_phdr[i].p_type == PT_DYNAMIC) {
+                dynamicPhdr = &info->dlpi_phdr[i];
+                break;
+            }
+        }
+        if (!dynamicPhdr) {
+            return 0;
+        }
 
-auto dyn=reinterpret_cast<ElfW(Dyn)*>(info->dlpi_addr+dynPhdr->p_vaddr);
-ElfW(Sym)* symtab=nullptr;
-const char* strtab=nullptr;
-size_t strsz=0;
-ElfW(Word)* hash=nullptr;
+        auto* dynamic = reinterpret_cast<ElfW(Dyn)*>(
+            info->dlpi_addr + dynamicPhdr->p_vaddr);
 
-for(ElfW(Dyn)* d=dyn;d->d_tag!=DT_NULL;d++){
-if(d->d_tag==DT_SYMTAB) symtab=reinterpret_cast<ElfW(Sym)*>(info->dlpi_addr+d->d_un.d_ptr);
-else if(d->d_tag==DT_STRTAB) strtab=reinterpret_cast<const char*>(info->dlpi_addr+d->d_un.d_ptr);
-else if(d->d_tag==DT_STRSZ) strsz=(size_t)d->d_un.d_val;
-else if(d->d_tag==DT_HASH) hash=reinterpret_cast<ElfW(Word)*>(info->dlpi_addr+d->d_un.d_ptr);
-}
-if(!symtab||!strtab||!strsz||!hash)return 0;
+        ElfW(Sym)* symtab = nullptr;
+        const char* strtab = nullptr;
+        size_t strsz = 0;
+        ElfW(Word)* hash = nullptr;
 
-for(size_t i=0;i<hash[1];i++){
-const ElfW(Sym)& s=symtab[i];
-if(!s.st_name||s.st_name>=strsz||s.st_shndx==SHN_UNDEF)continue;
-const char* n=strtab+s.st_name;
-if(strcmp(n,c->target)!=0)continue;
-if(ELF64_ST_TYPE(s.st_info)!=STT_FUNC)continue;
-c->addr=(uintptr_t)(info->dlpi_addr+s.st_value);
-c->found=true;
-return 1;
-}
-return 0;
-};
+        for (ElfW(Dyn)* d = dynamic; d->d_tag != DT_NULL; ++d) {
+            switch (d->d_tag) {
+                case DT_SYMTAB:
+                    symtab = reinterpret_cast<ElfW(Sym)*>(
+                        info->dlpi_addr + d->d_un.d_ptr);
+                    break;
+                case DT_STRTAB:
+                    strtab = reinterpret_cast<const char*>(
+                        info->dlpi_addr + d->d_un.d_ptr);
+                    break;
+                case DT_STRSZ:
+                    strsz = static_cast<size_t>(d->d_un.d_val);
+                    break;
+                case DT_HASH:
+                    hash = reinterpret_cast<ElfW(Word)*>(
+                        info->dlpi_addr + d->d_un.d_ptr);
+                    break;
+                default:
+                    break;
+            }
+        }
 
-dl_iterate_phdr(cb,&ctx);
-if(!ctx.found)return false;
+        if (!symtab || !strtab || !strsz || !hash) {
+            return 0;
+        }
 
-outAddr=ctx.addr;
-return true;
-}
+        const size_t symbolCount = static_cast<size_t>(hash[1]);
+        for (size_t i = 0; i < symbolCount; ++i) {
+            const ElfW(Sym)& symbol = symtab[i];
 
-static bool resolveHookApi(){
-uintptr_t addr=0;
-if(!resolveGspaceSymbol("MSHookFunction",addr)){
-logLine("ELF MSHookFunction=NOT_FOUND");
-return false;
-}
+            if (!symbol.st_name ||
+                symbol.st_name >= strsz ||
+                symbol.st_shndx == SHN_UNDEF) {
+                continue;
+            }
 
-gMSHookFunction=reinterpret_cast<MSHookFunctionFn>(addr);
-gApiFound=true;
+            const char* name = strtab + symbol.st_name;
+            if (std::strcmp(name, c->target) != 0) {
+                continue;
+            }
 
-logLine("ELF MSHookFunction=FOUND addr=0x"+
-std::to_string((unsigned long long)addr));
-logLine("HOOK API: direct-call READY");
-return true;
-}
+            if (ELF64_ST_TYPE(symbol.st_info) != STT_FUNC) {
+                continue;
+            }
 
-static int countSmapsLines(){
-int fd=open("/proc/self/smaps",O_RDONLY|O_CLOEXEC);
-if(fd<0){logLine("SMAPS: open FAILED errno="+std::to_string(errno));return -1;}
-char buf[4096];
-std::string data;
-for(;;){ssize_t n=read(fd,buf,sizeof(buf));if(n<=0)break;data.append(buf,n);}
-close(fd);
-int lines=0;
-for(char c:data)if(c=='\n')lines++;
-gProbeRuns++;
-logLine("SMAPS: read OK lines="+std::to_string(lines));
-return lines;
+            c->symbolAddr = static_cast<uintptr_t>(
+                info->dlpi_addr + symbol.st_value);
+            c->found = true;
+            return 1;
+        }
+
+        return 0;
+    };
+
+    dl_iterate_phdr(callback, &ctx);
+
+    if (!ctx.found) {
+        return false;
+    }
+
+    outAddr = ctx.symbolAddr;
+    return true;
 }
 
-__attribute__((noinline)) static int smapsProbe(){return countSmapsLines();}
+static bool resolveHookApi() {
+    uintptr_t addr = 0;
+    if (!resolveGspaceSymbol("MSHookFunction", addr)) {
+        logLine("MSHookFunction: NOT_FOUND");
+        return false;
+    }
 
-static int hookedSmapsProbe(){
-gHookHits++;
-logLine("HOOK CALLBACK: smapsProbe intercepted");
-int r=gOriginalProbe?gOriginalProbe():-1;
-logLine("HOOK CALLBACK: original result="+std::to_string(r));
-return r;
+    gMSHookFunction = reinterpret_cast<MSHookFunctionFn>(addr);
+    gApiFound = true;
+
+    logLine("MSHookFunction=" + hexAddr(addr));
+    logLine("HOOK API: READY");
+    return true;
 }
 
-static bool installHook(){
-if(gInstalled)return true;
+static bool installHook() {
+    if (gInstalled) {
+        return true;
+    }
 
-std::string path;
-if(!findLoadedGspace(path)){
-logLine("GSPACE: libgspace_64.so NOT FOUND");
-return false;
+    if (!resolveHookApi()) {
+        return false;
+    }
+
+    void* original = nullptr;
+    gMSHookFunction(
+        reinterpret_cast<void*>(&hookTarget),
+        reinterpret_cast<void*>(&hookedTarget),
+        &original);
+
+    gOriginalTest = reinterpret_cast<TestFn>(original);
+    if (!gOriginalTest) {
+        logLine("HOOK: trampoline=NO");
+        return false;
+    }
+
+    gInstalled = true;
+    logLine("HOOK: hookTarget=INSTALLED");
+    return true;
 }
 
-gGspacePath=path;
-logLine("GSPACE: loaded");
+static std::string snapshot() {
+    std::lock_guard<std::mutex> lock(gMutex);
 
-if(!resolveHookApi())return false;
-
-void* original=nullptr;
-gMSHookFunction(reinterpret_cast<void*>(&smapsProbe),
-reinterpret_cast<void*>(&hookedSmapsProbe),
-&original);
-
-gOriginalProbe=reinterpret_cast<ProbeFn>(original);
-if(!gOriginalProbe){
-logLine("HOOK: trampoline=NO");
-return false;
+    std::string s = gLog;
+    s += "STATUS\n";
+    s += "gspace=" + std::string(gGspacePath.empty() ? "NOT_FOUND" : "YES") + "\n";
+    s += "MSHookFunction=" + std::string(gApiFound ? "YES" : "NO") + "\n";
+    s += "local_hook=" + std::string(gInstalled ? "YES" : "NO") + "\n";
+    s += "hook_hits=" + std::to_string(gHookHits.load()) + "\n";
+    s += "test_runs=" + std::to_string(gTestRuns.load()) + "\n";
+    return s;
 }
 
-gInstalled=true;
-logLine("HOOK: local smapsProbe=INSTALLED");
-return true;
+static std::string runHookTest() {
+    constexpr int input = 37;
+
+    int before = -1;
+    if (!gInstalled) {
+        before = hookTarget(input);
+        logLine("BEFORE HOOK: hookTarget(" + std::to_string(input) +
+                ")=" + std::to_string(before));
+    }
+
+    if (!installHook()) {
+        return snapshot();
+    }
+
+    const int after = hookTarget(input);
+    ++gTestRuns;
+
+    logLine("AFTER HOOK: hookTarget(" + std::to_string(input) +
+            ")=" + std::to_string(after));
+
+    if (!gInstalled || !gHookHits.load()) {
+        logLine("RESULT: FAILED");
+    } else if (before != -1 && before == 118 && after == 1118) {
+        logLine("RESULT: PASS");
+    } else {
+        logLine("RESULT: CALLBACK_RAN");
+    }
+
+    return snapshot();
 }
 
-static std::string snapshot(){
-std::lock_guard<std::mutex> lock(gMutex);
-std::string s=gLog;
-s+="STATUS\n";
-s+="gspace="+std::string(gGspacePath.empty()?"NOT_FOUND":gGspacePath)+"\n";
-s+="MSHookFunction="+std::string(gApiFound?"YES":"NO")+"\n";
-s+="local_hook="+std::string(gInstalled?"YES":"NO")+"\n";
-s+="hook_hits="+std::to_string(gHookHits.load())+"\n";
-s+="probe_runs="+std::to_string(gProbeRuns.load())+"\n";
-return s;
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_erfansst_procmapdetector_MainActivity_runHookTest(
+    JNIEnv* env, jobject) {
+    const std::string result = runHookTest();
+    return env->NewStringUTF(result.c_str());
 }
 
-extern "C" JNIEXPORT jstring JNICALL Java_com_erfansst_procmapdetector_MainActivity_installHook(JNIEnv* e,jobject){installHook();return e->NewStringUTF(snapshot().c_str());}
-extern "C" JNIEXPORT jstring JNICALL Java_com_erfansst_procmapdetector_MainActivity_triggerSmaps(JNIEnv* e,jobject){if(!gInstalled)installHook();if(gInstalled)smapsProbe();return e->NewStringUTF(snapshot().c_str());}
-extern "C" JNIEXPORT jstring JNICALL Java_com_erfansst_procmapdetector_MainActivity_getLog(JNIEnv* e,jobject){return e->NewStringUTF(snapshot().c_str());}
-extern "C" JNIEXPORT jstring JNICALL Java_com_erfansst_procmapdetector_MainActivity_clearLog(JNIEnv* e,jobject){{std::lock_guard<std::mutex> lock(gMutex);gLog.clear();}return e->NewStringUTF(snapshot().c_str());}
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_erfansst_procmapdetector_MainActivity_getLog(
+    JNIEnv* env, jobject) {
+    const std::string result = snapshot();
+    return env->NewStringUTF(result.c_str());
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_erfansst_procmapdetector_MainActivity_clearLog(
+    JNIEnv* env, jobject) {
+    {
+        std::lock_guard<std::mutex> lock(gMutex);
+        gLog.clear();
+    }
+    gHookHits = 0;
+    gTestRuns = 0;
+    const std::string result = snapshot();
+    return env->NewStringUTF(result.c_str());
+}
