@@ -11,6 +11,7 @@ TextView out;
 android.os.Handler h=new android.os.Handler(android.os.Looper.getMainLooper());
 boolean auto=true;
 static{System.loadLibrary("gspace_64");}
+final Runnable refresh=new Runnable(){public void run(){if(auto){runRead();h.postDelayed(this,1000);}}};
 public void onCreate(Bundle b){
 super.onCreate(b);
 LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setPadding(16,16,16,16);
@@ -30,8 +31,6 @@ copy.setOnClickListener(v->copyLog());
 runInstall();
 h.post(refresh);
 }
-final Runnable refresh;
-{refresh=()->{if(auto){runRead();h.postDelayed(refresh,1000);}};}
 void runInstall(){new Thread(()->{String r=installHook();runOnUiThread(()->out.setText(r));}).start();}
 void runRead(){new Thread(()->{String r=triggerSmaps();runOnUiThread(()->out.setText(r));}).start();}
 void copyLog(){String s=out.getText().toString();ClipboardManager cm=(ClipboardManager)getSystemService(Context.CLIPBOARD_SERVICE);cm.setPrimaryClip(ClipData.newPlainText("Smaps Hook Log",s));Toast.makeText(this,"Log copied",Toast.LENGTH_SHORT).show();}
