@@ -333,7 +333,7 @@ extern "C" JNIEXPORT jstring JNICALL Java_com_erfansst_procmapdetector_MainActiv
 }
 
 extern "C" JNIEXPORT jstring JNICALL Java_com_erfansst_procmapdetector_MainActivity_hookEnvironment(JNIEnv*env,jobject){
-    if(!installHooks())return env->NewStringUTF("HOOK FAILED\n"+snapshot());
+    if(!installHooks()){std::string s="HOOK FAILED\n";s+=snapshot();return env->NewStringUTF(s.c_str());}
     gEnvironHookHits=0;
     gEnvironInjected=false;
     logLine("ENV HOOK PID="+std::to_string(getpid())+" INSTALLED");
