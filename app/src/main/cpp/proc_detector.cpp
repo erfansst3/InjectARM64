@@ -15,6 +15,9 @@
 #include <sys/syscall.h>
 
 #define TAG "GspaceHookTest"
+#ifndef MFD_CLOEXEC
+#define MFD_CLOEXEC 0x0001U
+#endif
 
 using MSHookFunctionFn=void(*)(void*,void*,void**);
 using PutsFn=int(*)(const char*);
@@ -42,6 +45,8 @@ static uintptr_t gPutsAddr=0;
 static uintptr_t gReadAddr=0;
 static long gLibcShared=0,gLibcPrivate=0,gLinkerShared=0,gLinkerPrivate=0;
 static bool gLibcSeen=false,gLinkerSeen=false;
+static std::atomic<int> gTestFd{-1};
+static std::atomic<int> gBufferHookHits{0};
 
 static void logLine(const std::string&s){
     std::lock_guard<std::mutex> lock(gMutex);
@@ -69,11 +74,29 @@ static bool isSmapsFd(int fd){
     return std::strstr(path,"/smaps")!=nullptr;
 }
 
+static bool getFdPath(int fd,std::string&out){
+    char link[64],path[256]={0};
+    std::snprintf(link,sizeof(link),"/proc/self/fd/%d",fd);
+    long n=syscall(SYS_readlinkat,AT_FDCWD,link,path,sizeof(path)-1);
+    if(n<=0)return false;
+    path[n]=0;
+    out=path;
+    return true;
+}
+
 static ssize_t hookedRead(int fd,void*buf,size_t n){
     ssize_t r=gOriginalRead?gOriginalRead(fd,buf,n):-1;
     if(r>0&&isSmapsFd(fd)){
         ++gSmapsHookHits;
         gSmapsBytes+=r;
+    }
+    if(r>0&&fd==gTestFd.load()){
+        char* p=(char*)buf;
+        const char* a="Shared_Dirty: 16 kB";
+        const char* b="Private_Dirty: 20 kB";
+        for(ssize_t i=0;i+strlen(a)<=r;i++)if(!std::memcmp(p+i,a,strlen(a)))std::memcpy(p+i,"Shared_Dirty: 0 kB ",strlen(a));
+        for(ssize_t i=0;i+strlen(b)<=r;i++)if(!std::memcmp(p+i,b,strlen(b)))std::memcpy(p+i,"Private_Dirty: 0 kB ",strlen(b));
+        ++gBufferHookHits;
     }
     return r;
 }
@@ -210,6 +233,28 @@ static void parseSmaps(const std::string&data){
     logLine("SMAPS linker TOTAL Shared_Dirty="+std::to_string(gLinkerShared)+" kB Private_Dirty="+std::to_string(gLinkerPrivate)+" kB");
 }
 
+static void runBufferTest(){
+    const char*raw="Mapping: libc.so\nShared_Dirty: 16 kB\nPrivate_Dirty: 20 kB\nMapping: linker64\nShared_Dirty: 16 kB\nPrivate_Dirty: 12 kB\n";
+    int fd=(int)syscall(SYS_memfd_create,"vspace_smaps_test",MFD_CLOEXEC);
+    if(fd<0){logLine("BUFFER TEST: memfd_create FAILED");return;}
+    syscall(SYS_write,fd,raw,strlen(raw));
+    syscall(SYS_lseek,fd,0,SEEK_SET);
+    gTestFd=fd;
+    std::string procPath;
+    if(getFdPath(fd,procPath))logLine("BUFFER TEST proc-path="+procPath);
+    char buf[512]={0};
+    ssize_t n=gLibcRead(fd,buf,sizeof(buf)-1);
+    gTestFd=-1;
+    syscall(SYS_close,fd);
+    if(n<=0){logLine("BUFFER TEST: read FAILED");return;}
+    buf[n]=0;
+    std::string out(buf,(size_t)n);
+    logLine("BUFFER TEST raw=Shared_Dirty: 16 kB Private_Dirty: 20 kB");
+    logLine("BUFFER TEST modified="+out.substr(0,out.find('\0')));
+    logLine("BUFFER TEST hook_hits="+std::to_string(gBufferHookHits.load()));
+    logLine("BUFFER TEST RESULT="+std::string(std::strstr(buf,"Shared_Dirty: 0 kB")&&std::strstr(buf,"Private_Dirty: 0 kB")?"PASS":"FAILED"));
+}
+
 static void runSmapsTest(){
     if(!gReadInstalled){
         logLine("SMAPS HOOK: NOT_INSTALLED");
@@ -244,6 +289,7 @@ static std::string snapshot(){
     s+="local_libc_hook="+std::string(gInstalled?"YES":"NO")+"\n";
     s+="local_read_hook="+std::string(gReadInstalled?"YES":"NO")+"\n";
     s+="hook_hits="+std::to_string(gHookHits.load())+"\n";
+    s+="buffer_hook_hits="+std::to_string(gBufferHookHits.load())+"\n";
     s+="smaps_hook_hits="+std::to_string(gSmapsHookHits.load())+"\n";
     s+="smaps_libc_shared_dirty="+std::to_string(gLibcShared)+" kB\n";
     s+="smaps_libc_private_dirty="+std::to_string(gLibcPrivate)+" kB\n";
@@ -256,6 +302,7 @@ static std::string snapshot(){
 static std::string runHookTest(){
     if(!installHooks())return snapshot();
     gHookHits=0;
+    gBufferHookHits=0;
     const int before=gLibcPuts("LIBC BEFORE HOOK");
     const int after=gLibcPuts("LIBC AFTER HOOK");
     ++gTestRuns;
@@ -263,6 +310,7 @@ static std::string runHookTest(){
     logLine("AFTER result="+std::to_string(after));
     logLine("CALLBACK hits="+std::to_string(gHookHits.load()));
     logLine((after>=0&&gHookHits>0)?"RESULT: PASS":"RESULT: FAILED");
+    runBufferTest();
     runSmapsTest();
     return snapshot();
 }
@@ -277,7 +325,7 @@ extern "C" JNIEXPORT jstring JNICALL Java_com_erfansst_procmapdetector_MainActiv
 
 extern "C" JNIEXPORT jstring JNICALL Java_com_erfansst_procmapdetector_MainActivity_clearLog(JNIEnv*env,jobject){
     {std::lock_guard<std::mutex>lock(gMutex);gLog.clear();}
-    gHookHits=0;gTestRuns=0;gSmapsHookHits=0;gSmapsBytes=0;
+    gHookHits=0;gTestRuns=0;gSmapsHookHits=0;gSmapsBytes=0;gBufferHookHits=0;
     gLibcShared=gLibcPrivate=gLinkerShared=gLinkerPrivate=0;
     gLibcSeen=gLinkerSeen=false;
     return env->NewStringUTF(snapshot().c_str());
