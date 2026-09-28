@@ -115,7 +115,7 @@ size_t shown=0;
 for(size_t i=0;i<count;i++){
 const ElfW(Sym)& s=symtab[i];
 if(!s.st_name||s.st_name>=strsz||s.st_shndx==SHN_UNDEF)continue;
-unsigned bind=ELFW(ST_BIND)(s.st_info);
+unsigned bind=ELF64_ST_BIND(s.st_info);
 if(bind==STB_LOCAL)continue;
 const char* n=strtab+s.st_name;
 logLine("EXPORT "+std::string(n)+" value=0x"+std::to_string((unsigned long long)s.st_value));
