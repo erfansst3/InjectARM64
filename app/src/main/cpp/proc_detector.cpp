@@ -138,7 +138,7 @@ const ElfW(Sym)& s=symtab[i];
 if(!s.st_name||s.st_name>=strsz||s.st_shndx==SHN_UNDEF)continue;
 const char* n=strtab+s.st_name;
 if(strcmp(n,c->target)!=0)continue;
-if(ELFW(ST_TYPE)(s.st_info)!=STT_FUNC)continue;
+if(ELF64_ST_TYPE(s.st_info)!=STT_FUNC)continue;
 c->addr=(uintptr_t)(info->dlpi_addr+s.st_value);
 c->found=true;
 return 1;
