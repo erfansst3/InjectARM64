@@ -102,47 +102,24 @@ default:return "OTHER";
 }
 }
 
-static void logDlsymResult(void* handle,const char* label,const char* name){
-dlerror();
-void* p=dlsym(handle,name);
-const char* err=dlerror();
-if(p){
-Dl_info di{};
-if(dladdr(p,&di)){
-logLine(std::string("DLSYM ")+label+" "+name+"=0x"+
-std::to_string((unsigned long long)(uintptr_t)p)+
-" owner="+(di.dli_fname?di.dli_fname:"?")+
-" sym="+(di.dli_sname?di.dli_sname:"?"));
-}else{
-logLine(std::string("DLSYM ")+label+" "+name+"=0x"+
-std::to_string((unsigned long long)(uintptr_t)p)+" dladdr=NO");
-}
-}else{
-logLine(std::string("DLSYM ")+label+" "+name+"=NO err="+(err?err:"?"));
-}
-}
+static bool resolveGspaceSymbol(const char* target,uintptr_t& outAddr){
+struct Ctx{const char* target;uintptr_t addr;bool found;};
+Ctx ctx{target,0,false};
 
-static void inspectTargetSymbols(){
-static const char* targets[]={
-"MSHookFunction",
-"A64HookFunction",
-"A64HookFunctionV",
-"SandInlineHook",
-"SandSingleInstHook"
-};
-
-auto cb=[](struct dl_phdr_info* info,size_t,void*)->int{
+auto cb=[](struct dl_phdr_info* info,size_t,void* opaque)->int{
+Ctx* c=reinterpret_cast<Ctx*>(opaque);
 if(!info->dlpi_name||!strstr(info->dlpi_name,"libgspace_64.so"))return 0;
+
 const Elf64_Phdr* dynPhdr=nullptr;
 for(int i=0;i<info->dlpi_phnum;i++){
 if(info->dlpi_phdr[i].p_type==PT_DYNAMIC){
-dynPhdr=reinterpret_cast<const Elf64_Phdr*>(&info->dlpi_phdr[i]);
+dynPhdr=&info->dlpi_phdr[i];
 break;
 }
 }
 if(!dynPhdr)return 0;
 
-Elf64_Dyn* dyn=reinterpret_cast<Elf64_Dyn*>(info->dlpi_addr+dynPhdr->p_vaddr);
+auto dyn=reinterpret_cast<Elf64_Dyn*>(info->dlpi_addr+dynPhdr->p_vaddr);
 Elf64_Sym* symtab=nullptr;
 const char* strtab=nullptr;
 size_t strsz=0;
@@ -156,34 +133,40 @@ else if(d->d_tag==DT_HASH) hash=reinterpret_cast<Elf64_Word*>(info->dlpi_addr+d-
 }
 if(!symtab||!strtab||!strsz||!hash)return 0;
 
-size_t count=hash[1];
-logLine("TARGETS: base=0x"+std::to_string((unsigned long long)info->dlpi_addr));
-
-for(const char* target:targets){
-bool found=false;
-for(size_t i=0;i<count;i++){
+for(size_t i=0;i<hash[1];i++){
 const Elf64_Sym& s=symtab[i];
 if(!s.st_name||s.st_name>=strsz||s.st_shndx==SHN_UNDEF)continue;
 const char* n=strtab+s.st_name;
-if(strcmp(n,target)!=0)continue;
-
-found=true;
-uintptr_t addr=(uintptr_t)(info->dlpi_addr+s.st_value);
-logLine(std::string("ELF ")+target+
-" value=0x"+std::to_string((unsigned long long)s.st_value)+
-" addr=0x"+std::to_string((unsigned long long)addr)+
-" bind="+symBind(ELF64_ST_BIND(s.st_info))+
-" vis="+symVis((s.st_other & 0x3))+
-" type="+symType(ELF64_ST_TYPE(s.st_info))+
-" shndx="+std::to_string((unsigned)s.st_shndx));
-break;
-}
-if(!found)logLine(std::string("ELF ")+target+"=NOT_FOUND");
+if(strcmp(n,c->target)!=0)continue;
+if(ELF64_ST_TYPE(s.st_info)!=STT_FUNC)continue;
+c->addr=(uintptr_t)(info->dlpi_addr+s.st_value);
+c->found=true;
+return 1;
 }
 return 0;
 };
 
-dl_iterate_phdr(cb,nullptr);
+dl_iterate_phdr(cb,&ctx);
+if(!ctx.found)return false;
+
+outAddr=ctx.addr;
+return true;
+}
+
+static bool resolveHookApi(){
+uintptr_t addr=0;
+if(!resolveGspaceSymbol("MSHookFunction",addr)){
+logLine("ELF MSHookFunction=NOT_FOUND");
+return false;
+}
+
+gMSHookFunction=reinterpret_cast<MSHookFunctionFn>(addr);
+gApiFound=true;
+
+logLine("ELF MSHookFunction=FOUND addr=0x"+
+std::to_string((unsigned long long)addr));
+logLine("HOOK API: direct-call READY");
+return true;
 }
 
 static int countSmapsLines(){
@@ -212,37 +195,17 @@ return r;
 
 static bool installHook(){
 if(gInstalled)return true;
+
 std::string path;
 if(!findLoadedGspace(path)){
-logLine("GSPACE_API: libgspace_64.so NOT FOUND");
+logLine("GSPACE: libgspace_64.so NOT FOUND");
 return false;
 }
+
 gGspacePath=path;
-logLine("GSPACE_API: found "+path);
-enumerateLoaded();
-inspectTargetSymbols();
+logLine("GSPACE: loaded");
 
-void* h=dlopen("libgspace_64.so",RTLD_NOW|RTLD_NOLOAD);
-if(h){
-logLine("GSPACE_API: basename dlopen OK");
-logDlsymResult(h,"HANDLE","MSHookFunction");
-}else{
-const char* err=dlerror();
-logLine(std::string("GSPACE_API: basename dlopen NO err=")+(err?err:"?"));
-}
-
-logDlsymResult(RTLD_DEFAULT,"DEFAULT","MSHookFunction");
-
-dlerror();
-gMSHookFunction=reinterpret_cast<MSHookFunctionFn>(dlsym(h? h:RTLD_DEFAULT,"MSHookFunction"));
-const char* err=dlerror();
-if(!gMSHookFunction){
-logLine(std::string("GSPACE_API: selected MSHookFunction=NO err=")+(err?err:"?"));
-return false;
-}
-
-gApiFound=true;
-logLine("GSPACE_API: MSHookFunction export FOUND");
+if(!resolveHookApi())return false;
 
 void* original=nullptr;
 gMSHookFunction(reinterpret_cast<void*>(&smapsProbe),
@@ -251,12 +214,12 @@ reinterpret_cast<void*>(&hookedSmapsProbe),
 
 gOriginalProbe=reinterpret_cast<ProbeFn>(original);
 if(!gOriginalProbe){
-logLine("HOOK: original trampoline NOT returned");
+logLine("HOOK: trampoline=NO");
 return false;
 }
 
 gInstalled=true;
-logLine("HOOK: local smapsProbe INSTALLED");
+logLine("HOOK: local smapsProbe=INSTALLED");
 return true;
 }
 
