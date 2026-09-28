@@ -11,6 +11,7 @@
 #include <cstdlib>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <sstream>
 #include <sys/uio.h>
 #include <android/log.h>
