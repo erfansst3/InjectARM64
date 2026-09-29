@@ -165,7 +165,7 @@ static uintptr_t findGSpaceExport(const char* name) {
         const ElfW(Sym)& sym = symtab[i];
         if (sym.st_name == 0 || sym.st_name >= strsz) continue;
         if (sym.st_shndx == SHN_UNDEF) continue;
-        if (ELFW(ST_TYPE)(sym.st_info) != STT_FUNC) continue;
+        if (ELF64_ST_TYPE(sym.st_info) != STT_FUNC) continue;
 
         const char* symbolName = strtab + sym.st_name;
         if (std::strcmp(symbolName, name) == 0) {
