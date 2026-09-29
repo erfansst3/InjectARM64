@@ -18,9 +18,11 @@ public class MainActivity extends Activity{
         root.setPadding(16,16,16,16);
 
         LinearLayout bar=new LinearLayout(this);
+        Button scan=new Button(this);scan.setText("SCAN GSPACE");
         Button hook=new Button(this);hook.setText("HOOK");
         Button read=new Button(this);read.setText("READ");
         Button copy=new Button(this);copy.setText("COPY");
+        bar.addView(scan,new LinearLayout.LayoutParams(0,-2,1.5f));
         bar.addView(hook,new LinearLayout.LayoutParams(0,-2,1));
         bar.addView(read,new LinearLayout.LayoutParams(0,-2,1));
         bar.addView(copy,new LinearLayout.LayoutParams(0,-2,1));
@@ -34,14 +36,18 @@ public class MainActivity extends Activity{
         root.addView(bar);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
         setContentView(root);
 
-        hook.setOnClickListener(v->{
-            String s=hookEnvironment();
-            out.setText(s);
-        });
+        scan.setOnClickListener(v->new Thread(()->{
+            String s=scanGspace();
+            runOnUiThread(()->out.setText(s));
+        }).start());
+
+        hook.setOnClickListener(v->out.setText(hookEnvironment()));
+
         read.setOnClickListener(v->new Thread(()->{
             String s=readEnvironment();
             runOnUiThread(()->out.setText(s));
         }).start());
+
         copy.setOnClickListener(v->{
             ClipboardManager cm=(ClipboardManager)getSystemService(Context.CLIPBOARD_SERVICE);
             cm.setPrimaryClip(ClipData.newPlainText("log",out.getText().toString()));
@@ -50,6 +56,7 @@ public class MainActivity extends Activity{
     }
 
     public native boolean installHook();
+    public native String scanGspace();
     public native String readEnvironment();
     public native String hookEnvironment();
     public native String runHookTest();
