@@ -13,6 +13,9 @@
 #include <sys/syscall.h>
 #include <pthread.h>
 #include <errno.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <arpa/inet.h>
 
 #define TAG "InjectARM64"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
@@ -29,6 +32,55 @@ static std::atomic<int> gHits{0};
 static std::atomic<int> gGspaceFound{0};
 
 static const char kMarker[] = "\nInjectARM64_HOOK=ACTIVE\n";
+static const char kSocketName[] = "injectarm64.buffer";
+
+static void publishVirtualBuffer(const char* path, const void* data, size_t len, ssize_t originalResult) {
+    if (!data || len == 0) return;
+
+    char payload[2048];
+    const int header = std::snprintf(
+        payload, sizeof(payload),
+        "INJECTARM64_BUFFER=ACTIVE\\nPID=%d\\nPATH=%s\\nORIGINAL_READ=%zd\\nDELIVERED_READ=%zu\\n"
+        "PAYLOAD_BEGIN\\n",
+        getpid(), path ? path : "?", originalResult, len);
+    if (header <= 0 || static_cast<size_t>(header) >= sizeof(payload)) return;
+
+    size_t used = static_cast<size_t>(header);
+    const size_t room = sizeof(payload) - used - 16;
+    const size_t copyLen = len < room ? len : room;
+    std::memcpy(payload + used, data, copyLen);
+    used += copyLen;
+    const char tail[] = "\nPAYLOAD_END\\n";
+    if (used + sizeof(tail) - 1 > sizeof(payload)) return;
+    std::memcpy(payload + used, tail, sizeof(tail) - 1);
+    used += sizeof(tail) - 1;
+
+    const int s = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    if (s < 0) return;
+
+    sockaddr_un addr{};
+    addr.sun_family = AF_UNIX;
+    const size_t nameLen = sizeof(kSocketName) - 1;
+    if (nameLen + 1 >= sizeof(addr.sun_path)) {
+        close(s);
+        return;
+    }
+    addr.sun_path[0] = '\\0';
+    std::memcpy(addr.sun_path + 1, kSocketName, nameLen);
+    const socklen_t addrLen = static_cast<socklen_t>(offsetof(sockaddr_un, sun_path) + 1 + nameLen);
+
+    if (connect(s, reinterpret_cast<sockaddr*>(&addr), addrLen) == 0) {
+        const uint32_t netLen = htonl(static_cast<uint32_t>(used));
+        (void)send(s, &netLen, sizeof(netLen), MSG_NOSIGNAL);
+        size_t sent = 0;
+        while (sent < used) {
+            const ssize_t n = send(s, payload + sent, used - sent, MSG_NOSIGNAL);
+            if (n <= 0) break;
+            sent += static_cast<size_t>(n);
+        }
+    }
+    close(s);
+}
 
 struct GSpaceModule {
     uintptr_t base = 0;
@@ -200,7 +252,11 @@ static ssize_t hookedRead(int fd, void* buf, size_t count) {
         const size_t markerLen = sizeof(kMarker) - 1;
         if (static_cast<size_t>(result) + markerLen < count) {
             std::memcpy(static_cast<char*>(buf) + result, kMarker, markerLen);
-            return result + static_cast<ssize_t>(markerLen);
+            const ssize_t delivered = result + static_cast<ssize_t>(markerLen);
+            publishVirtualBuffer("/proc/self/status",
+                                 static_cast<const char*>(buf) + result,
+                                 markerLen, result);
+            return delivered;
         }
     }
 
