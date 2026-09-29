@@ -57,7 +57,7 @@ static std::atomic<int> gInstalled{0}, gGspaceFound{0};
 static std::atomic<int> hOpenAt{0}, hOpen{0}, hFopen{0}, hIoctl{0}, hSyscall{0};
 static std::atomic<int> hSystem{0}, hPopen{0}, hExecve{0};
 
-// محافظ محلی نخ جهت جلوگیری از حلقه بازگشتی بی‌نهایت و کرش
+// محافظ محلی نخ جهت جلوگیری از حلقه بازگشتی بی‌‌نهایت و کرش
 static thread_local bool g_inside_hook = false;
 
 // مدیریت و ثبت لیست FDهای فیک
@@ -150,14 +150,11 @@ static uintptr_t findGSpaceExport(const char* name) {
     return 0;
 }
 
+// تابع هوشمند برای شناسایی مسیرها و دستورات شل مرتبط با بافر فیک
 static bool isKossherPath(const char* p) {
     if (!p) return false;
-    if (strstr(p, "/maps") || strstr(p, "/status") || strstr(p, "/cmdline") || strstr(p, "kossher")) return true;
-    if (strncmp(p, "/proc/", 6) == 0) {
-        p += 6;
-        if (*p < '0' || *p > '9') return false;
-        while (*p >= '0' && *p <= '9') p++;
-        return !strcmp(p, "/kossher");
+    if (strstr(p, "kossher") || strstr(p, "/maps") || strstr(p, "/status") || strstr(p, "/cmdline") || strstr(p, "/proc/")) {
+        return true;
     }
     return false;
 }
@@ -323,6 +320,7 @@ static FILE* fakePopen(const char* command, const char* type) {
     return res;
 }
 
+// چاپ مستقیم بافر فیک در stdout هنگام فراخوانی system("cat ...")
 static int fakeSystem(const char* command) {
     if (g_inside_hook) return gSystem ? gSystem(command) : -1;
     g_inside_hook = true;
@@ -330,6 +328,11 @@ static int fakeSystem(const char* command) {
     if (isKossherPath(command)) {
         hSystem++;
         LOGI("HOOK system command=%s pid=%d", command, getpid());
+        
+        std::string data = marker();
+        fwrite(data.data(), 1, data.size(), stdout);
+        fflush(stdout);
+        
         g_inside_hook = false;
         return 0;
     }
@@ -339,7 +342,7 @@ static int fakeSystem(const char* command) {
     return res;
 }
 
-// هوک اختصاصی execve برای کنترل اجرای دستورات مستقیم شل
+// رهگیری و چاپ مستقیم بافر فیک در صورت فراخوانی مستقیم execve
 static int fakeExecve(const char* filename, char* const argv[], char* const envp[]) {
     if (g_inside_hook) return gExecve ? gExecve(filename, argv, envp) : execve(filename, argv, envp);
     g_inside_hook = true;
@@ -358,10 +361,13 @@ static int fakeExecve(const char* filename, char* const argv[], char* const envp
     if (match) {
         hExecve++;
         LOGI("HOOK execve intercepted for path! pid=%d", getpid());
+        
+        std::string data = marker();
+        fwrite(data.data(), 1, data.size(), stdout);
+        fflush(stdout);
+
         g_inside_hook = false;
-        // گزارش عدم وجود فایل به پروسه فراخوانی‌کننده
-        errno = ENOENT;
-        return -1;
+        return 0;
     }
 
     int res = gExecve ? gExecve(filename, argv, envp) : execve(filename, argv, envp);
@@ -378,7 +384,7 @@ static int fakeIoctl(int fd, unsigned long request, void* arg) {
 
     if (isFakeFd(fd) && request == FIONREAD) {
         if (arg) {
-            *reinterpret_cast<int*>(arg) = 0; // کست به int* برای تنظیم مقدار صفر
+            *reinterpret_cast<int*>(arg) = 0; // تنظیم مقدار FIONREAD برابر 0 جهت شبیه‌سازی procfs
         }
         g_inside_hook = false;
         return 0;
@@ -502,7 +508,7 @@ static bool installHook() {
     gHook = (MSHookFunctionFn)a;
     gInstalled = 1;
     libcScan();
-    LOGI("HOOKS_PROFILE=FULL_SAFE_WITH_EXECVE");
+    LOGI("HOOKS_PROFILE=FULL_SAFE_WITH_SHELL_OUTPUT");
     return true;
 }
 
