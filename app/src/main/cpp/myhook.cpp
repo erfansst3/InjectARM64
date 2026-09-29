@@ -32,41 +32,29 @@ using MSHookFunctionFn=void(*)(void*,void*,void**);
 using OpenFn=int(*)(const char*,int,...);
 using OpenAtFn=int(*)(int,const char*,int,...);
 using PreadFn=ssize_t(*)(int,void*,size_t,off_t);
-using Open2Fn=int(*)(const char*,int);
-using OpenAt2Fn=int(*)(int,const char*,int);
-using PreadChkFn=ssize_t(*)(int,void*,size_t,off_t,size_t);
 using MmapFn=void*(*)(void*,size_t,int,int,int,off_t);
 using FopenFn=FILE*(*)(const char*,const char*);
 using ReadFn=ssize_t(*)(int,void*,size_t);
-using FreadFn=size_t(*)(void*,size_t,size_t,FILE*);
 using IoctlCallFn=int(*)(int,unsigned long,void*);
 using SyscallCallFn=long(*)(long,long,long,long,long,long,long);
 
 static MSHookFunctionFn gHook = nullptr;
-static OpenFn gOpen = nullptr;
-static OpenAtFn gOpenAt = nullptr;
-static Open2Fn gOpen2 = nullptr;
-static OpenAt2Fn gOpenAt2 = nullptr;
-static Open2Fn gOpen64_2 = nullptr;
-static OpenAt2Fn gOpenAt64_2 = nullptr;
-static PreadFn gPread = nullptr;
-static PreadFn gPread64 = nullptr;
-static PreadChkFn gPread64Chk = nullptr;
-static MmapFn gMmap = nullptr;
-static MmapFn gMmap64 = nullptr;
-static FopenFn gFopen = nullptr;
-static ReadFn gRead = nullptr;
-static FreadFn gFread = nullptr;
 
+// پوینترهای اصلی (Original)
+static OpenFn gOpenImport = nullptr;
+static OpenAtFn gOpenAtImport = nullptr;
+static ReadFn gReadImport = nullptr;
+static PreadFn gPreadImport = nullptr;
+static MmapFn gMmapImport = nullptr;
+static FopenFn gFopen = nullptr;
 static IoctlCallFn gIoctlImport = nullptr;
 static SyscallCallFn gSyscallImport = nullptr;
 
-static std::atomic<int> gIoctlImportHooked{0},gSyscallImportHooked{0};
 static std::atomic<int> gInstalled{0},gGspaceFound{0};
 static std::atomic<int> hOpenAt{0},hOpen{0},hFopen{0},hPread{0},hMmap{0},hIoctl{0},hSyscall{0},hRead{0},hFread{0};
 static std::atomic<int> hSyscallOpenat{0}, hDirectSvcOpenat{0};
 
-// جلوگیری از حلقه‌های بازگشتی درون‌نخی
+// پرچم‌های جلوگیری از حلقه بازگشتی
 static thread_local bool g_inside_hook = false;
 static thread_local bool g_inside_ioctl = false;
 
@@ -75,11 +63,6 @@ static uintptr_t g_libc_start = 0;
 static uintptr_t g_libc_end = 0;
 
 static void* gLibc = nullptr;
-static void* gOpenAddr = nullptr;
-static void* gOpenAtAddr = nullptr;
-
-struct HookRecord{void* addr;void* orig;void* repl;};
-static HookRecord gHookRecords[32];static int gHookRecordCount=0;
 
 struct GSpaceModule{uintptr_t base=0;const ElfW(Phdr)* dynamicPhdr=nullptr;};
 
@@ -143,7 +126,6 @@ static uintptr_t findGSpaceExport(const char* name){
     return 0;
 }
 
-// بررسی سلامت اشاره‌گر رشته در حافظه
 static bool is_valid_string_ptr(const void* ptr) {
     if (!ptr) return false;
     int pfd[2];
@@ -175,16 +157,10 @@ static std::string marker(){
         "KOSSHER_BUFFER=ACTIVE\nPID=%d\n"
         "OPENAT_HIT=%d\nOPEN_HIT=%d\nFOPEN_HIT=%d\n"
         "PREAD_HIT=%d\nMMAP_HIT=%d\nIOCTL_HIT=%d\nSYSCALL_HIT=%d\n"
-        "READ_HIT=%d\nFREAD_HIT=%d\nDIRECT_SVC_HIT=%d\n"
-        "HOOK_OPENAT=%d\nHOOK_OPEN=%d\nHOOK_FOPEN=%d\n"
-        "HOOK_PREAD=%d\nHOOK_MMAP=%d\nHOOK_IOCTL=%d\nHOOK_SYSCALL=%d\n",
+        "READ_HIT=%d\nFREAD_HIT=%d\nDIRECT_SVC_HIT=%d\n",
         getpid(),hOpenAt.load(),hOpen.load(),hFopen.load(),
         hPread.load(),hMmap.load(),hIoctl.load(),hSyscall.load(),hRead.load(),hFread.load(),
-        hDirectSvcOpenat.load(),
-        gOpenAt!=nullptr,gOpen!=nullptr,gFopen!=nullptr,
-        gPread!=nullptr||gPread64!=nullptr||gPread64Chk!=nullptr,
-        gMmap!=nullptr||gMmap64!=nullptr,
-        gIoctlImportHooked.load(),gSyscallImportHooked.load());
+        hDirectSvcOpenat.load());
     return n>0?std::string(b,(size_t)n):std::string();
 }
 
@@ -206,7 +182,7 @@ static int makeFakeFd(const std::string& d){
 }
 
 // ---------------------------------------------------------------------------
-// توابع پروکسی C Hooks
+// توابع پروکسی هوک‌شده سراسری (GOT Hooks)
 // ---------------------------------------------------------------------------
 
 static int fakeOpenAt(int d,const char* p,int f,...){
@@ -215,9 +191,12 @@ static int fakeOpenAt(int d,const char* p,int f,...){
         int fd=makeFakeFd(marker());
         if(fd>=0){LOGI("HOOK openat %s pid=%d fd=%d",p,getpid(),fd);return fd;}
     }
-    if(!gOpenAt){errno=ENOSYS;return -1;}
+    if(!gOpenAtImport){
+        va_list a;va_start(a,f);mode_t m=(f&O_CREAT)?va_arg(a,int):0;va_end(a);
+        return openat(d,p,f,m);
+    }
     va_list a;va_start(a,f);mode_t m=(f&O_CREAT)?va_arg(a,int):0;va_end(a);
-    return gOpenAt(d,p,f,m);
+    return gOpenAtImport(d,p,f,m);
 }
 
 static int fakeOpen(const char* p,int f,...){
@@ -226,9 +205,12 @@ static int fakeOpen(const char* p,int f,...){
         int fd=makeFakeFd(marker());
         if(fd>=0){LOGI("HOOK open %s pid=%d fd=%d",p,getpid(),fd);return fd;}
     }
-    if(!gOpen){errno=ENOSYS;return -1;}
+    if(!gOpenImport){
+        va_list a;va_start(a,f);mode_t m=(f&O_CREAT)?va_arg(a,int):0;va_end(a);
+        return (f&O_CREAT)?open(p,f,m):open(p,f);
+    }
     va_list a;va_start(a,f);mode_t m=(f&O_CREAT)?va_arg(a,int):0;va_end(a);
-    return (f&O_CREAT)?gOpen(p,f,m):gOpen(p,f);
+    return (f&O_CREAT)?gOpenImport(p,f,m):gOpenImport(p,f);
 }
 
 static FILE* fakeFopen(const char* p,const char* m){
@@ -237,22 +219,23 @@ static FILE* fakeFopen(const char* p,const char* m){
         int fd=makeFakeFd(marker());
         if(fd>=0){LOGI("HOOK fopen %s pid=%d fd=%d",p,getpid(),fd);return fdopen(fd,m&&*m?m:"r");}
     }
-    return gFopen?gFopen(p,m):nullptr;
+    return gFopen?gFopen(p,m):fopen(p,m);
+}
+
+static ssize_t fakeRead(int fd,void* b,size_t n){
+    hRead++;
+    return gReadImport?gReadImport(fd,b,n):read(fd,b,n);
 }
 
 static ssize_t fakePread(int fd,void* b,size_t n,off_t o){
     hPread++;
-    return gPread?gPread(fd,b,n,o):-1;
+    return gPreadImport?gPreadImport(fd,b,n,o):pread(fd,b,n,o);
 }
 
 static void* fakeMmap(void* a,size_t n,int p,int f,int fd,off_t o){
     hMmap++;
-    return gMmap?gMmap(a,n,p,f,fd,o):(gMmap64?gMmap64(a,n,p,f,fd,o):MAP_FAILED);
+    return gMmapImport?gMmapImport(a,n,p,f,fd,o):mmap(a,n,p,f,fd,o);
 }
-
-// ---------------------------------------------------------------------------
-// اصلاح پایداری ioctl و syscall (با محافظ g_inside_ioctl)
-// ---------------------------------------------------------------------------
 
 static int fakeIoctlImport(int fd,unsigned long request,void* arg){
     if(g_inside_ioctl || fd < 0){
@@ -260,7 +243,6 @@ static int fakeIoctlImport(int fd,unsigned long request,void* arg){
     }
     g_inside_ioctl = true;
     hIoctl++;
-
     int res = gIoctlImport ? gIoctlImport(fd,request,arg) : ioctl(fd,request,arg);
     g_inside_ioctl = false;
     return res;
@@ -277,7 +259,6 @@ static long fakeSyscallImport(long number,long a1,long a2,long a3,long a4,long a
     if(number==SYS_openat){
         const char* path=(const char*)a2;
         const int flags=(int)a3;
-        // تغییر f به flags در خط زیر
         if(isKossherPath(path) && (flags&O_ACCMODE)!=O_WRONLY){
             hSyscallOpenat++;
             int fd=makeFakeFd(marker());
@@ -295,13 +276,123 @@ static long fakeSyscallImport(long number,long a1,long a2,long a3,long a4,long a
     return ret;
 }
 
+// ---------------------------------------------------------------------------
+// موتور پچ جدول GOT برای کل اپلیکیشن (Import Hooking)
+// ---------------------------------------------------------------------------
+
+static bool patchImportRelas64(
+    uintptr_t base,const char* moduleName,
+    Elf64_Sym* symtab,const char* strtab,
+    Elf64_Rela* relas,size_t count,const char* target,
+    void* replacement,void** original,bool& patched){
+
+    constexpr unsigned kGlobDat=1025;
+    constexpr unsigned kJumpSlot=1026;
+    const size_t pageSize=(size_t)getpagesize();
+
+    for(size_t i=0;i<count;i++){
+        const Elf64_Rela& r=relas[i];
+        const unsigned type=(unsigned)ELF64_R_TYPE(r.r_info);
+        if(type!=kGlobDat && type!=kJumpSlot) continue;
+
+        const size_t symIndex=(size_t)ELF64_R_SYM(r.r_info);
+        const char* symName=strtab + symtab[symIndex].st_name;
+        if(!symName || strcmp(symName,target)!=0) continue;
+
+        void** slot=(void**)(base+(uintptr_t)r.r_offset);
+        void* current=*slot;
+
+        if(current==replacement){
+            patched=true;
+            continue;
+        }
+
+        if(original && *original==nullptr) *original=current;
+
+        const uintptr_t page=(uintptr_t)slot & ~(uintptr_t)(pageSize-1);
+        if(mprotect((void*)page,pageSize,PROT_READ|PROT_WRITE)!=0) continue;
+
+        *slot=replacement;
+        (void)mprotect((void*)page,pageSize,PROT_READ);
+        patched=true;
+    }
+    return true;
+}
+
+static bool patchImportedSymbol64(const dl_phdr_info* info,const char* target,void* replacement,void** original){
+    if(!info || !target || !replacement) return false;
+    const char* moduleName=(info->dlpi_name && info->dlpi_name[0]) ? info->dlpi_name : "[main]";
+
+    if(strstr(moduleName,"/libc.so") || strstr(moduleName,"/libmyhook.so")) return false;
+    if(strncmp(moduleName,"/data/",6)!=0 && strcmp(moduleName,"[main]")!=0) return false;
+
+    const uintptr_t base=(uintptr_t)info->dlpi_addr;
+    const ElfW(Phdr)* dynPhdr=nullptr;
+
+    for(int i=0;i<info->dlpi_phnum;i++){
+        if(info->dlpi_phdr[i].p_type==PT_DYNAMIC){
+            dynPhdr=&info->dlpi_phdr[i];
+            break;
+        }
+    }
+    if(!dynPhdr) return false;
+
+    auto* dyn=(Elf64_Dyn*)(base+dynPhdr->p_vaddr);
+    Elf64_Sym* symtab=nullptr;
+    const char* strtab=nullptr;
+    Elf64_Rela* rela=nullptr;
+    size_t relasz=0;
+    Elf64_Rela* jmprel=nullptr;
+    size_t pltrelsz=0;
+
+    for(;dyn->d_tag!=DT_NULL;dyn++){
+        switch(dyn->d_tag){
+            case DT_SYMTAB: symtab=(Elf64_Sym*)(base+(uintptr_t)dyn->d_un.d_ptr); break;
+            case DT_STRTAB: strtab=(const char*)(base+(uintptr_t)dyn->d_un.d_ptr); break;
+            case DT_RELA: rela=(Elf64_Rela*)(base+(uintptr_t)dyn->d_un.d_ptr); break;
+            case DT_RELASZ: relasz=(size_t)dyn->d_un.d_val; break;
+            case DT_JMPREL: jmprel=(Elf64_Rela*)(base+(uintptr_t)dyn->d_un.d_ptr); break;
+            case DT_PLTRELSZ: pltrelsz=(size_t)dyn->d_un.d_val; break;
+        }
+    }
+
+    if(!symtab || !strtab) return false;
+    bool patched=false;
+
+    if(rela && relasz) patchImportRelas64(base,moduleName,symtab,strtab,rela,relasz/sizeof(Elf64_Rela),target,replacement,original,patched);
+    if(jmprel && pltrelsz) patchImportRelas64(base,moduleName,symtab,strtab,jmprel,pltrelsz/sizeof(Elf64_Rela),target,replacement,original,patched);
+
+    return patched;
+}
+
+struct ImportPatchContext{const char* target;void* replacement;void** original;bool patched;};
+static int patchImportedSymbolCallback(dl_phdr_info* info,size_t,void* opaque){
+    auto* ctx=(ImportPatchContext*)opaque;
+    if(patchImportedSymbol64(info,ctx->target,ctx->replacement,ctx->original)) ctx->patched=true;
+    return 0;
+}
+
+static void hookAllImports(){
+    dl_iterate_phdr([](dl_phdr_info* info, size_t, void*) -> int {
+        patchImportedSymbol64(info, "open", (void*)fakeOpen, (void**)&gOpenImport);
+        patchImportedSymbol64(info, "openat", (void*)fakeOpenAt, (void**)&gOpenAtImport);
+        patchImportedSymbol64(info, "fopen", (void*)fakeFopen, (void**)&gFopen);
+        patchImportedSymbol64(info, "read", (void*)fakeRead, (void**)&gReadImport);
+        patchImportedSymbol64(info, "pread", (void*)fakePread, (void**)&gPreadImport);
+        patchImportedSymbol64(info, "mmap", (void*)fakeMmap, (void**)&gMmapImport);
+        patchImportedSymbol64(info, "ioctl", (void*)fakeIoctlImport, (void**)&gIoctlImport);
+        patchImportedSymbol64(info, "syscall", (void*)fakeSyscallImport, (void**)&gSyscallImport);
+        return 0;
+    }, nullptr);
+    LOGI("ALL_IMPORT_HOOKS_APPLIED");
+}
 
 // ---------------------------------------------------------------------------
-// محاسبه محدوده آدرس libc.so
+// محاسبه محدوده آدرس libc.so و Seccomp
 // ---------------------------------------------------------------------------
 
 static void calculate_libc_range() {
-    dl_iterate_phdr([](dl_phdr_info* info, size_t, void* data) -> int {
+    dl_iterate_phdr([](dl_phdr_info* info, size_t, void*) -> int {
         if (info->dlpi_name && strstr(info->dlpi_name, "libc.so")) {
             g_libc_start = info->dlpi_addr;
             size_t max_vaddr = 0;
@@ -316,16 +407,11 @@ static void calculate_libc_range() {
         }
         return 0;
     }, nullptr);
-    LOGI("LIBC Memory Range: [%p - %p]", (void*)g_libc_start, (void*)g_libc_end);
 }
 
-// ---------------------------------------------------------------------------
-// Seccomp BPF با فیلتر هوشمند آدرس libc.so (جلوگیری قطعی از کرش)
-// ---------------------------------------------------------------------------
-
-static void sigsys_handler(int code, siginfo_t* info, void* void_context) {
+static void sigsys_handler(int, siginfo_t*, void* void_context) {
     ucontext_t* ctx = static_cast<ucontext_t*>(void_context);
-    uint64_t syscall_num = ctx->uc_mcontext.regs[8]; // x8 در ARM64
+    uint64_t syscall_num = ctx->uc_mcontext.regs[8];
 
     if (syscall_num == __NR_openat) {
         int dirfd = static_cast<int>(ctx->uc_mcontext.regs[0]);
@@ -338,14 +424,13 @@ static void sigsys_handler(int code, siginfo_t* info, void* void_context) {
             int fake_fd = makeFakeFd(marker());
             if (fake_fd >= 0) {
                 LOGI("HOOK Direct SVC #0 (__NR_openat) %s pid=%d fd=%d", path, getpid(), fake_fd);
-                ctx->uc_mcontext.regs[0] = static_cast<uint64_t>(fake_fd); // ذخیره FD فیک در x0
-                ctx->uc_mcontext.pc += 4; // عبور از دستور ۴ بایتی svc #0
+                ctx->uc_mcontext.regs[0] = static_cast<uint64_t>(fake_fd);
+                ctx->uc_mcontext.pc += 4;
                 return;
             }
         }
 
-        // اجرای کنترل‌شده از طریق gOpenAt (چون gOpenAt درون libc است، Seccomp آن را اجازه می‌دهد)
-        int real_fd = gOpenAt ? gOpenAt(dirfd, path, flags, mode) : openat(dirfd, path, flags, mode);
+        int real_fd = gOpenAtImport ? gOpenAtImport(dirfd, path, flags, mode) : openat(dirfd, path, flags, mode);
         ctx->uc_mcontext.regs[0] = static_cast<uint64_t>(real_fd);
         ctx->uc_mcontext.pc += 4;
         return;
@@ -368,25 +453,18 @@ static bool setup_seccomp_svc_hook() {
     uint32_t libc_lo_start = static_cast<uint32_t>(g_libc_start & 0xFFFFFFFF);
     uint32_t libc_lo_end = static_cast<uint32_t>(g_libc_end & 0xFFFFFFFF);
 
-    // فیلتر BPF: چک کردن اینکه آیا دستورالعمل داخل libc.so است یا خیر
     struct sock_filter filter[] = {
-        // 1. بررسی شماره سیستم‌کال (__NR_openat = 56)
         BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, nr)),
-        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_openat, 0, 6), // اگر openat نیست -> ALLOW
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_openat, 0, 6),
 
-        // 2. بررسی 32 بیت بالایی Instruction Pointer
         BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, instruction_pointer) + 4),
-        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, libc_hi, 0, 3), // اگر hi ناهمخوان است -> TRAP
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, libc_hi, 0, 3),
 
-        // 3. بررسی 32 بیت پایینی Instruction Pointer (بین libc_lo_start و libc_lo_end)
         BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, instruction_pointer)),
         BPF_JUMP(BPF_JMP | BPF_JGE | BPF_K, libc_lo_start, 0, 1),
         BPF_JUMP(BPF_JMP | BPF_JGE | BPF_K, libc_lo_end, 0, 1),
 
-        // TRAP (برای دستورات svc #0 خارج از libc)
         BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-
-        // ALLOW (برای کدهای درون libc.so)
         BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
     };
 
@@ -402,49 +480,6 @@ static bool setup_seccomp_svc_hook() {
     return true;
 }
 
-// ---------------------------------------------------------------------------
-// اسکن و نصب هوک‌ها
-// ---------------------------------------------------------------------------
-
-static bool hookLibcSymbol(MSHookFunctionFn h,const char* n,void* repl,void** orig,void** addrStore){
-    if(!gLibc||!n||!orig)return false;
-    void* p=dlsym(gLibc,n);
-    if(!p) return false;
-    if(addrStore)*addrStore=p;
-
-    for(int i=0;i<gHookRecordCount;i++){
-        if(gHookRecords[i].addr==p){
-            *orig=gHookRecords[i].orig;
-            return *orig!=nullptr;
-        }
-    }
-
-    void* saved=nullptr;
-    h(p,repl,&saved);
-    if(!saved)return false;
-    if(gHookRecordCount<(int)(sizeof(gHookRecords)/sizeof(gHookRecords[0]))){
-        gHookRecords[gHookRecordCount++]={p,saved,repl};
-    }
-    *orig=saved;
-    return true;
-}
-
-static void libcScan(){
-    gLibc=dlopen("libc.so",RTLD_NOW);
-    if(!gLibc) return;
-
-    hookLibcSymbol(gHook,"open",(void*)fakeOpen,(void**)&gOpen,nullptr);
-    hookLibcSymbol(gHook,"openat",(void*)fakeOpenAt,(void**)&gOpenAt,&gOpenAtAddr);
-    hookLibcSymbol(gHook,"fopen",(void*)fakeFopen,(void**)&gFopen,nullptr);
-    hookLibcSymbol(gHook,"pread",(void*)fakePread,(void**)&gPread,nullptr);
-    hookLibcSymbol(gHook,"mmap",(void*)fakeMmap,(void**)&gMmap,nullptr);
-
-    void* libcIoctl=dlsym(gLibc,"ioctl");
-    void* libcSyscall=dlsym(gLibc,"syscall");
-    if(libcIoctl) gIoctlImport=(IoctlCallFn)libcIoctl;
-    if(libcSyscall) gSyscallImport=(SyscallCallFn)libcSyscall;
-}
-
 static bool installHook(){
     if(gInstalled)return true;
     uintptr_t a=findGSpaceExport("MSHookFunction");
@@ -452,10 +487,11 @@ static bool installHook(){
     gHook=(MSHookFunctionFn)a;
     gInstalled=1;
 
-    libcScan();
+    gLibc=dlopen("libc.so",RTLD_NOW);
+    hookAllImports();
     setup_seccomp_svc_hook();
 
-    LOGI("ALL_HOOKS_AND_SECCOMP_READY");
+    LOGI("ALL_HOOKS_AND_GOT_READY");
     return true;
 }
 
