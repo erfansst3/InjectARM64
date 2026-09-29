@@ -1,4 +1,4 @@
-name: Android Build
+name: Kossher Hook + Detector Build
 on: [push, workflow_dispatch]
 jobs:
   build:
@@ -35,7 +35,7 @@ jobs:
           /tmp/gradle-8.7/bin/gradle :app:assembleDebug :reader:assembleDebug --no-daemon
       - uses: actions/upload-artifact@v4
         with:
-          name: proc-maps-detector
+          name: kossher-detector
           path: app/build/outputs/apk/debug/*.apk
       - uses: actions/upload-artifact@v4
         with:
