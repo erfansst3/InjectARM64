@@ -6,6 +6,7 @@
 #include <atomic>
 #include <cstdint>
 #include <cstdio>
+#include <cstdarg>
 #include <cstring>
 #include <string>
 #include <unistd.h>
