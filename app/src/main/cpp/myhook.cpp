@@ -350,35 +350,42 @@ static bool hookLibcSymbol(MSHookFunctionFn h,const char* n,void* repl,void** or
     LOGI("LIBC_HOOK %s=YES addr=%p orig=%p",n,p,saved);
 
 
-static bool patchImportRelas(uintptr_t base,const char* moduleName,
-                             ElfW(Sym)* symtab,const char* strtab,
-                             ElfW(Rela)* relas,size_t count,const char* target,
-                             void* replacement,void** original,bool& patched){
-    if(!relas||!count)return true;
+static bool patchImportRelas64(
+    uintptr_t base,const char* moduleName,
+    Elf64_Sym* symtab,const char* strtab,
+    Elf64_Rela* relas,size_t count,const char* target,
+    void* replacement,void** original,bool& patched){
+
+    constexpr unsigned kGlobDat=1025;
+    constexpr unsigned kJumpSlot=1026;
     const size_t pageSize=(size_t)getpagesize();
 
     for(size_t i=0;i<count;i++){
-        const ElfW(Rela)& r=relas[i];
+        const Elf64_Rela& r=relas[i];
         const unsigned type=(unsigned)ELF64_R_TYPE(r.r_info);
-        if(type!=R_AARCH64_JUMP_SLOT && type!=R_AARCH64_GLOB_DAT)continue;
+        if(type!=kGlobDat && type!=kJumpSlot) continue;
 
         const size_t symIndex=(size_t)ELF64_R_SYM(r.r_info);
-        const char* symName=strtab+symtab[symIndex].st_name;
-        if(!symName||strcmp(symName,target)!=0)continue;
+        const char* symName=strtab + symtab[symIndex].st_name;
+        if(!symName || strcmp(symName,target)!=0) continue;
 
         void** slot=(void**)(base+(uintptr_t)r.r_offset);
         void* current=*slot;
+
         if(current==replacement){
             patched=true;
             continue;
         }
-        if(original&&!*original)*original=current;
+
+        if(original && *original==nullptr) *original=current;
 
         const uintptr_t page=(uintptr_t)slot & ~(uintptr_t)(pageSize-1);
         if(mprotect((void*)page,pageSize,PROT_READ|PROT_WRITE)!=0){
-            LOGW("GOT_MPROTECT_FAIL module=%s sym=%s errno=%d",moduleName,target,errno);
+            LOGW("GOT_MPROTECT_FAIL module=%s sym=%s errno=%d",
+                 moduleName,target,errno);
             continue;
         }
+
         *slot=replacement;
         (void)mprotect((void*)page,pageSize,PROT_READ);
         patched=true;
@@ -389,52 +396,79 @@ static bool patchImportRelas(uintptr_t base,const char* moduleName,
     return true;
 }
 
-static bool patchImportedSymbol(const dl_phdr_info* info,const char* target,
-                                void* replacement,void** original,void** slotStore){
-    if(!info||!target||!replacement)return false;
-    const char* moduleName=(info->dlpi_name&&info->dlpi_name[0]) ? info->dlpi_name : "[main]";
-    if(strstr(moduleName,"/libc.so")||strstr(moduleName,"/libmyhook.so"))return false;
+static bool patchImportedSymbol64(
+    const dl_phdr_info* info,const char* target,
+    void* replacement,void** original){
 
-    uintptr_t base=(uintptr_t)info->dlpi_addr;
+    if(!info || !target || !replacement) return false;
+
+    const char* moduleName=(info->dlpi_name && info->dlpi_name[0])
+        ? info->dlpi_name : "[main]";
+
+    // libc itself is intentionally left untouched. This is the important
+    // difference from the crashing ioctl/__ioctl inline hooks.
+    if(strstr(moduleName,"/libc.so") || strstr(moduleName,"/libmyhook.so"))
+        return false;
+
+    const uintptr_t base=(uintptr_t)info->dlpi_addr;
     const ElfW(Phdr)* dynPhdr=nullptr;
-    for(int i=0;i<info->dlpi_phnum;i++){
-        if(info->dlpi_phdr[i].p_type==PT_DYNAMIC){dynPhdr=&info->dlpi_phdr[i];break;}
-    }
-    if(!dynPhdr)return false;
 
-    auto* dyn=(ElfW(Dyn)*)(base+dynPhdr->p_vaddr);
-    ElfW(Sym)* symtab=nullptr;
+    for(int i=0;i<info->dlpi_phnum;i++){
+        if(info->dlpi_phdr[i].p_type==PT_DYNAMIC){
+            dynPhdr=&info->dlpi_phdr[i];
+            break;
+        }
+    }
+    if(!dynPhdr) return false;
+
+    auto* dyn=(Elf64_Dyn*)(base+dynPhdr->p_vaddr);
+    Elf64_Sym* symtab=nullptr;
     const char* strtab=nullptr;
-    ElfW(Rela)* rela=nullptr;
+    Elf64_Rela* rela=nullptr;
     size_t relasz=0;
-    ElfW(Addr) jmprelAddr=0;
+
+    Elf64_Rela* jmprel=nullptr;
     size_t pltrelsz=0;
-    long pltrelType=DT_RELA;
 
     for(;dyn->d_tag!=DT_NULL;dyn++){
         switch(dyn->d_tag){
-            case DT_SYMTAB: symtab=(ElfW(Sym)*)(base+dyn->d_un.d_ptr); break;
-            case DT_STRTAB: strtab=(const char*)(base+dyn->d_un.d_ptr); break;
-            case DT_RELA: rela=(ElfW(Rela)*)(base+dyn->d_un.d_ptr); break;
-            case DT_RELASZ: relasz=(size_t)dyn->d_un.d_val; break;
-            case DT_JMPREL: jmprelAddr=dyn->d_un.d_ptr; break;
-            case DT_PLTRELSZ: pltrelsz=(size_t)dyn->d_un.d_val; break;
-            case DT_PLTREL: pltrelType=(long)dyn->d_un.d_val; break;
+            case DT_SYMTAB:
+                symtab=(Elf64_Sym*)(base+(uintptr_t)dyn->d_un.d_ptr);
+                break;
+            case DT_STRTAB:
+                strtab=(const char*)(base+(uintptr_t)dyn->d_un.d_ptr);
+                break;
+            case DT_RELA:
+                rela=(Elf64_Rela*)(base+(uintptr_t)dyn->d_un.d_ptr);
+                break;
+            case DT_RELASZ:
+                relasz=(size_t)dyn->d_un.d_val;
+                break;
+            case DT_JMPREL:
+                jmprel=(Elf64_Rela*)(base+(uintptr_t)dyn->d_un.d_ptr);
+                break;
+            case DT_PLTRELSZ:
+                pltrelsz=(size_t)dyn->d_un.d_val;
+                break;
         }
     }
-    if(!symtab||!strtab)return false;
+
+    if(!symtab || !strtab) return false;
 
     bool patched=false;
-    if(rela&&relasz){
-        patchImportRelas(base,moduleName,symtab,strtab,rela,
-                         relasz/sizeof(ElfW(Rela)),target,replacement,original,patched);
+
+    if(rela && relasz){
+        patchImportRelas64(base,moduleName,symtab,strtab,rela,
+                           relasz/sizeof(Elf64_Rela),target,
+                           replacement,original,patched);
     }
-    if(jmprelAddr&&pltrelsz&&pltrelType==DT_RELA){
-        auto* pltrela=(ElfW(Rela)*)(base+jmprelAddr);
-        patchImportRelas(base,moduleName,symtab,strtab,pltrela,
-                         pltrelsz/sizeof(ElfW(Rela)),target,replacement,original,patched);
+
+    if(jmprel && pltrelsz){
+        patchImportRelas64(base,moduleName,symtab,strtab,jmprel,
+                           pltrelsz/sizeof(Elf64_Rela),target,
+                           replacement,original,patched);
     }
-    if(patched&&slotStore)*slotStore=original?*original:nullptr;
+
     return patched;
 }
 
@@ -442,31 +476,32 @@ struct ImportPatchContext{
     const char* target;
     void* replacement;
     void** original;
-    void** slotStore;
-    bool patched=false;
+    bool patched;
 };
 
 static int patchImportedSymbolCallback(dl_phdr_info* info,size_t,void* opaque){
     auto* ctx=(ImportPatchContext*)opaque;
-    if(patchImportedSymbol(info,ctx->target,ctx->replacement,ctx->original,ctx->slotStore))
+    if(patchImportedSymbol64(info,ctx->target,ctx->replacement,ctx->original))
         ctx->patched=true;
     return 0;
 }
 
-static bool hookAllImportedSymbols(const char* target,void* replacement,
-                                   void** original,void** slotStore){
-    ImportPatchContext ctx{target,replacement,original,slotStore,false};
+static bool hookAllImportedSymbols(
+    const char* target,void* replacement,void** original){
+
+    ImportPatchContext ctx{target,replacement,original,false};
     dl_iterate_phdr(patchImportedSymbolCallback,&ctx);
     return ctx.patched;
 }
 
 static int fakeIoctlImport(int fd,int request,void* arg){
     hIoctl++;
-    return gIoctlImport?gIoctlImport(fd,request,arg):-1;
+    return gIoctlImport ? gIoctlImport(fd,request,arg) : -1;
 }
 
-static long fakeSyscallImport(long number,long a1,long a2,long a3,
-                               long a4,long a5,long a6){
+static long fakeSyscallImport(
+    long number,long a1,long a2,long a3,long a4,long a5,long a6){
+
     hSyscall++;
     return gSyscallImport
         ? gSyscallImport(number,a1,a2,a3,a4,a5,a6)
