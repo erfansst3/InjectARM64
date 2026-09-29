@@ -33,6 +33,8 @@ using MmapFn=void*(*)(void*,size_t,int,int,int,off_t);
 using FopenFn=FILE*(*)(const char*,const char*);
 using IoctlCallFn=int(*)(int,int,void*);
 using SyscallCallFn=long(*)(long,long,long,long,long,long,long);
+using IoctlCallFn=int(*)(int,int,void*);
+using SyscallCallFn=long(*)(long,long,long,long,long,long,long);
 
 static MSHookFunctionFn gHook;
 static OpenFn gOpen;
@@ -50,7 +52,7 @@ static FopenFn gFopen;
 static IoctlCallFn gIoctlImport;
 static SyscallCallFn gSyscallImport;
 static std::atomic<int> gInstalled{0},gGspaceFound{0};
-static std::atomic<int> hOpenAt{0},hOpen{0},hFopen{0},hPread{0},hMmap{0},hIoctl{0},hRead{0},hFread{0};
+static std::atomic<int> hOpenAt{0},hOpen{0},hFopen{0},hPread{0},hMmap{0},hIoctl{0},hSyscall{0},hRead{0},hFread{0};
 struct HookRecord{void* addr;void* orig;void* repl;};
 static HookRecord gHookRecords[32];static int gHookRecordCount=0;
 
@@ -179,8 +181,9 @@ static std::string marker(){
         "READ_HIT=%d\nFREAD_HIT=%d\n"
         "HOOK_OPENAT=%d\nHOOK_OPEN=%d\nHOOK_FOPEN=%d\n"
         "HOOK_PREAD=%d\nHOOK_MMAP=%d\nHOOK_IOCTL=%d\n"
-        "ACTIVE_HOOK_SET=open,openat,__open_2,__openat_2,fopen\n"
-        "DISABLED_HOOK_SET=read,fread,pread,pread64,mmap,mmap64,ioctl\n"
+        "ACTIVE_HOOK_SET=open,openat,__open_2,__openat_2,fopen,fread,read,pread,pread64,mmap,mmap64\n"
+        "IMPORT_HOOK_SET=ioctl,syscall\n"
+        "DISABLED_HOOK_SET=direct-svc\n"
         "VA_IOUNIFORMER_PRESERVED=__openat,__open\n"
         "DIRECT_SYSCALL=NOT_HOOKABLE\n",
         getpid(),hOpenAt.load(),hOpen.load(),hFopen.load(),
@@ -304,6 +307,8 @@ static void* gFopenAddr;
 static void* gMmapAddr;
 static void* gIoctlImportSlot;
 static void* gSyscallImportSlot;
+static void* gIoctlImportSlot;
+static void* gSyscallImportSlot;
 
 using ReadFn=ssize_t(*)(int,void*,size_t);
 using FreadFn=size_t(*)(void*,size_t,size_t,FILE*);
@@ -391,8 +396,7 @@ static bool patchImportRelas(uintptr_t base,const char* moduleName,
 static bool patchImportedSymbol(const dl_phdr_info* info,const char* target,
                                 void* replacement,void** original,void** slotStore){
     if(!info||!target||!replacement)return false;
-    const char* moduleName=info->dlpi_name;
-    if(!moduleName||!moduleName[0])return false;
+    const char* moduleName=(info->dlpi_name&&info->dlpi_name[0]) ? info->dlpi_name : "[main]";
     if(strstr(moduleName,"/libc.so")||strstr(moduleName,"/libmyhook.so"))return false;
 
     uintptr_t base=(uintptr_t)info->dlpi_addr;
@@ -466,7 +470,8 @@ static int fakeIoctlImport(int fd,int request,void* arg){
 }
 
 static long fakeSyscallImport(long number,long a1,long a2,long a3,
-                              long a4,long a5,long a6){
+                               long a4,long a5,long a6){
+    hSyscall++;
     return gSyscallImport
         ? gSyscallImport(number,a1,a2,a3,a4,a5,a6)
         : -1;
@@ -510,7 +515,7 @@ static bool installHook(){
     gHook=(MSHookFunctionFn)a;
     gInstalled=1;
     libcScan();
-    LOGI("HOOKS_PROFILE=STABLE_NO_IOCTL");
+    LOGI("HOOKS_PROFILE=STABLE_PLUS_GOT_IOCTL_SYSCALL");
     LOGI("HOOKS libc=%p open=%d openat=%d __open_2=%d __openat_2=%d fopen=%d fread=%d read=%d pread=%d pread64=%d mmap=%d mmap64=%d",
          gLibc,!!gOpen,!!gOpenAt,!!gOpen2,!!gOpenAt2,!!gFopen,!!gFread,!!gRead,
          !!gPread,!!gPread64,!!gMmap,!!gMmap64);
