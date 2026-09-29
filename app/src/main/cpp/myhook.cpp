@@ -277,7 +277,8 @@ static long fakeSyscallImport(long number,long a1,long a2,long a3,long a4,long a
     if(number==SYS_openat){
         const char* path=(const char*)a2;
         const int flags=(int)a3;
-        if(isKossherPath(path) && (f&O_ACCMODE)!=O_WRONLY){
+        // تغییر f به flags در خط زیر
+        if(isKossherPath(path) && (flags&O_ACCMODE)!=O_WRONLY){
             hSyscallOpenat++;
             int fd=makeFakeFd(marker());
             if(fd>=0){
@@ -293,6 +294,7 @@ static long fakeSyscallImport(long number,long a1,long a2,long a3,long a4,long a
     g_inside_hook = false;
     return ret;
 }
+
 
 // ---------------------------------------------------------------------------
 // محاسبه محدوده آدرس libc.so
