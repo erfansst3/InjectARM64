@@ -91,6 +91,52 @@ static size_t gnuHashSymbolCount(const uint32_t* h){
     return (size_t)max+1;
 }
 
+static bool findModuleByName(const char* needle,GSpaceModule& out){
+    auto cb=[](dl_phdr_info* i,size_t,void* p)->int{
+        auto* ctx=(std::pair<const char*,GSpaceModule*>*)p;
+        if(!i->dlpi_name||!strstr(i->dlpi_name,ctx->first))return 0;
+        ctx->second->base=(uintptr_t)i->dlpi_addr;
+        for(int n=0;n<i->dlpi_phnum;n++)if(i->dlpi_phdr[n].p_type==PT_DYNAMIC){
+            ctx->second->dynamicPhdr=&i->dlpi_phdr[n];
+            break;
+        }
+        return 1;
+    };
+    std::pair<const char*,GSpaceModule*> ctx{needle,&out};
+    dl_iterate_phdr(cb,&ctx);
+    return out.base&&out.dynamicPhdr;
+}
+
+static uintptr_t findDynamicSymbol(const char* moduleNeedle,const char* name){
+    GSpaceModule m;
+    if(!findModuleByName(moduleNeedle,m))return 0;
+    auto* d=(ElfW(Dyn)*)(m.base+m.dynamicPhdr->p_vaddr);
+    ElfW(Sym)* st=nullptr;
+    const char* str=nullptr;
+    size_t sz=0;
+    const ElfW(Word)* sh=nullptr;
+    const uint32_t* gh=nullptr;
+    for(;d->d_tag!=DT_NULL;d++)switch(d->d_tag){
+        case DT_SYMTAB:st=(ElfW(Sym)*)dynPtr(m.base,d->d_un.d_ptr);break;
+        case DT_STRTAB:str=(const char*)dynPtr(m.base,d->d_un.d_ptr);break;
+        case DT_STRSZ:sz=(size_t)d->d_un.d_val;break;
+        case DT_HASH:sh=(const ElfW(Word)*)dynPtr(m.base,d->d_un.d_ptr);break;
+        case DT_GNU_HASH:gh=(const uint32_t*)dynPtr(m.base,d->d_un.d_ptr);break;
+    }
+    if(!st||!str||!sz)return 0;
+    size_t n=sysvHashSymbolCount(sh);
+    if(!n)n=gnuHashSymbolCount(gh);
+    if(!n)return 0;
+    for(size_t i=0;i<n;i++){
+        const auto& s=st[i];
+        if(!s.st_name||s.st_name>=sz||s.st_shndx==SHN_UNDEF)continue;
+        if(!strcmp(str+s.st_name,name))
+            return m.base+(uintptr_t)s.st_value;
+    }
+    return 0;
+}
+
+
 static uintptr_t findGSpaceExport(const char* name){
     GSpaceModule m;
     if(!findGSpaceModule(m))return 0;
@@ -260,7 +306,7 @@ static void* fakeMmap64(void* a,size_t n,int p,int f,int fd,off_t o){
     return gMmap64?gMmap64(a,n,p,f,fd,o):(gMmap?gMmap(a,n,p,f,fd,o):MAP_FAILED);
 }
 
-static int fakeIoctl(int fd,unsigned long req,...){
+[[maybe_unused]] static int fakeIoctl(int fd,unsigned long req,...){
     hIoctl++;
     if(!gIoctl){errno=ENOSYS;return -1;}
     va_list a;va_start(a,req);void* arg=va_arg(a,void*);va_end(a);
@@ -353,7 +399,18 @@ static void libcScan(){
     hookLibcSymbol(gHook,"fread",(void*)fakeFread,(void**)&gFread,&gFreadAddr);
     hookLibcSymbol(gHook,"mmap",(void*)fakeMmap,(void**)&gMmap,&gMmapAddr);
     hookLibcSymbol(gHook,"mmap64",(void*)fakeMmap64,(void**)&gMmap64,&gMmapAddr);
-    hookLibcSymbol(gHook,"ioctl",(void*)fakeIoctl,(void**)&gIoctl,&gIoctlAddr);
+    gIoctlAddr=(void*)findDynamicSymbol("/libc.so","__ioctl");
+    if(!gIoctlAddr)gIoctlAddr=(void*)findDynamicSymbol("libc.so","__ioctl");
+    if(gIoctlAddr){
+        gIoctlPrivate=nullptr;
+        void* saved=nullptr;
+        gHook(gIoctlAddr,(void*)fakeIoctlPrivate,&saved);
+        gIoctlPrivate=(Ioctl3Fn)saved;
+        LOGI("LIBC_HOOK __ioctl=%s addr=%p orig=%p",
+             gIoctlPrivate?"YES":"NO",gIoctlAddr,saved);
+    }else{
+        LOGI("LIBC_SYMBOL __ioctl=NOT_FOUND; public ioctl left untouched");
+    }
 }
 
 static void runSelfTest(){
@@ -420,7 +477,7 @@ static void runSelfTest(){
         if(pipe(pp)==0){
             int avail=0;
             write(pp[1],"12345",5);
-            auto fn=(IoctlFn)gIoctlAddr;
+            auto fn=(Ioctl3Fn)gIoctlAddr;
             int r=fn(pp[0],FIONREAD,&avail);
             LOGI("TEST_ADDR ioctl r=%d avail=%d hit=%d",r,avail,hIoctl.load());
             close(pp[0]);
@@ -446,13 +503,13 @@ static bool installHook(){
     LOGI("HOOKS libc=%p open=%d open64=%d openat=%d openat64=%d __openat=%d __openat_2=%d __open=%d __open_2=%d read=%d pread=%d fopen=%d fopen64=%d fread=%d mmap=%d mmap64=%d ioctl=%d",
          gLibc,!!gOpen,!!gOpen64,!!gOpenAt,!!gOpenAt64,!!gOpenAtPrivate,!!gOpenAt2,
          !!gOpenPrivate,!!gOpen2,!!gRead,!!gPread64||!!gPread,!!gFopen,!!gFopen64,
-         !!gFread,!!gMmap,!!gMmap64,!!gIoctl);
+         !!gFread,!!gMmap,!!gMmap64,!!gIoctlPrivate);
     runSelfTest();
     return true;
 }
 
 static void* worker(void*){
-    LOGI("libmyhook loaded pid=%d",getpid());
+    LOGI("libmyhook loaded pid=%d tid=%lu",getpid(),(unsigned long)pthread_self());
     for(int i=0;i<300&&!gInstalled.load();i++){
         if(installHook())break;
         usleep(100000);
