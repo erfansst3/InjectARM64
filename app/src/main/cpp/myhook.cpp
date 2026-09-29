@@ -513,9 +513,9 @@ static long fakeSyscallImport(
         const char* path=(const char*)a2;
         const int flags=(int)a3;
         if(isKossherPath(path) && (flags&O_ACCMODE)!=O_WRONLY){
+            hSyscallOpenat++;
             int fd=makeFakeFd(marker());
             if(fd>=0){
-                hSyscallOpenat++;
                 LOGI("HOOK syscall(SYS_openat) %s pid=%d fd=%d",path,getpid(),fd);
                 return fd;
             }
@@ -528,9 +528,9 @@ static long fakeSyscallImport(
         const char* path=(const char*)a1;
         const int flags=(int)a2;
         if(isKossherPath(path) && (flags&O_ACCMODE)!=O_WRONLY){
+            hSyscallOpenat++;
             int fd=makeFakeFd(marker());
             if(fd>=0){
-                hSyscallOpenat++;
                 LOGI("HOOK syscall(SYS_open) %s pid=%d fd=%d",path,getpid(),fd);
                 return fd;
             }
@@ -542,9 +542,9 @@ static long fakeSyscallImport(
     if(number==SYS_openat2){
         const char* path=(const char*)a2;
         if(isKossherPath(path)){
+            hSyscallOpenat++;
             int fd=makeFakeFd(marker());
             if(fd>=0){
-                hSyscallOpenat++;
                 LOGI("HOOK syscall(SYS_openat2) %s pid=%d fd=%d",path,getpid(),fd);
                 return fd;
             }
