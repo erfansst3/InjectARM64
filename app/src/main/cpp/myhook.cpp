@@ -27,10 +27,8 @@ using MSHookFunctionFn = void(*)(void*, void*, void**);
 using OpenFn = int(*)(const char*, int, ...);
 using OpenAtFn = int(*)(int, const char*, int, ...);
 using PreadFn = ssize_t(*)(int, void*, size_t, off_t);
-using OpenAt4Fn = int(*)(int, const char*, int, mode_t);
 using Open2Fn = int(*)(const char*, int);
 using OpenAt2Fn = int(*)(int, const char*, int);
-using PreadChkFn = ssize_t(*)(int, void*, size_t, off_t, size_t);
 using MmapFn = void*(*)(void*, size_t, int, int, int, off_t);
 using FopenFn = FILE*(*)(const char*, const char*);
 using IoctlFn = int(*)(int, unsigned long, void*);
@@ -38,6 +36,7 @@ using SyscallFn = long(*)(long, long, long, long, long, long, long);
 using CloseFn = int(*)(int);
 using SystemFn = int(*)(const char*);
 using PopenFn = FILE*(*)(const char*, const char*);
+using ExecveFn = int(*)(const char*, char* const[], char* const[]);
 
 static MSHookFunctionFn gHook;
 static OpenFn gOpen;
@@ -46,22 +45,17 @@ static Open2Fn gOpen2;
 static OpenAt2Fn gOpenAt2;
 static Open2Fn gOpen64_2;
 static OpenAt2Fn gOpenAt64_2;
-static PreadFn gPread;
-static PreadFn gPread64;
-static PreadChkFn gPread64Chk;
-static MmapFn gMmap;
-static MmapFn gMmap64;
 static FopenFn gFopen;
 static IoctlFn gIoctl;
 static SyscallFn gSyscall;
 static CloseFn gClose;
 static SystemFn gSystem;
 static PopenFn gPopen;
+static ExecveFn gExecve;
 
 static std::atomic<int> gInstalled{0}, gGspaceFound{0};
-static std::atomic<int> hOpenAt{0}, hOpen{0}, hFopen{0}, hPread{0}, hMmap{0}, hIoctl{0}, hSyscall{0}, hRead{0}, hFread{0};
-static std::atomic<int> hSystem{0}, hPopen{0};
-static std::atomic<int> hSyscallOpenat{0};
+static std::atomic<int> hOpenAt{0}, hOpen{0}, hFopen{0}, hIoctl{0}, hSyscall{0};
+static std::atomic<int> hSystem{0}, hPopen{0}, hExecve{0};
 
 // محافظ محلی نخ جهت جلوگیری از حلقه بازگشتی بی‌نهایت و کرش
 static thread_local bool g_inside_hook = false;
@@ -173,11 +167,10 @@ static std::string marker() {
     int n = snprintf(b, sizeof(b),
         "KOSSHER_BUFFER=ACTIVE\nPID=%d\n"
         "OPENAT_HIT=%d\nOPEN_HIT=%d\nFOPEN_HIT=%d\n"
-        "PREAD_HIT=%d\nMMAP_HIT=%d\nIOCTL_HIT=%d\nSYSCALL_HIT=%d\n"
-        "POPEN_HIT=%d\nSYSTEM_HIT=%d\n",
+        "IOCTL_HIT=%d\nSYSCALL_HIT=%d\n"
+        "POPEN_HIT=%d\nSYSTEM_HIT=%d\nEXECVE_HIT=%d\n",
         getpid(), hOpenAt.load(), hOpen.load(), hFopen.load(),
-        hPread.load(), hMmap.load(), hIoctl.load(), hSyscall.load(),
-        hPopen.load(), hSystem.load());
+        hIoctl.load(), hSyscall.load(), hPopen.load(), hSystem.load(), hExecve.load());
     return n > 0 ? std::string(b, (size_t)n) : std::string();
 }
 
@@ -311,12 +304,11 @@ static FILE* fakeFopen(const char* p, const char* m) {
     return res;
 }
 
-// هوک هوشمند popen برای بازگرداندن بافر فیک بدون نیاز به اجرای واقعی شل
 static FILE* fakePopen(const char* command, const char* type) {
     if (g_inside_hook) return gPopen ? gPopen(command, type) : nullptr;
     g_inside_hook = true;
     
-    if (command && strstr(command, "kossher")) {
+    if (isKossherPath(command)) {
         hPopen++;
         int fd = makeFakeFd(marker());
         if (fd >= 0) {
@@ -331,20 +323,48 @@ static FILE* fakePopen(const char* command, const char* type) {
     return res;
 }
 
-// هوک هوشمند system برای مدیریت اجرای دستورات shell حاوی مسیر فیک
 static int fakeSystem(const char* command) {
     if (g_inside_hook) return gSystem ? gSystem(command) : -1;
     g_inside_hook = true;
     
-    if (command && strstr(command, "kossher")) {
+    if (isKossherPath(command)) {
         hSystem++;
         LOGI("HOOK system command=%s pid=%d", command, getpid());
-        // بازگرداندن وضعیت موفقیت (0) برای دستوراتی که وضعیت اجرا را تست می‌کنند
         g_inside_hook = false;
         return 0;
     }
     
     int res = gSystem ? gSystem(command) : -1;
+    g_inside_hook = false;
+    return res;
+}
+
+// هوک اختصاصی execve برای کنترل اجرای دستورات مستقیم شل
+static int fakeExecve(const char* filename, char* const argv[], char* const envp[]) {
+    if (g_inside_hook) return gExecve ? gExecve(filename, argv, envp) : execve(filename, argv, envp);
+    g_inside_hook = true;
+
+    bool match = false;
+    if (filename && isKossherPath(filename)) match = true;
+    if (!match && argv) {
+        for (int i = 0; argv[i] != nullptr; i++) {
+            if (isKossherPath(argv[i])) {
+                match = true;
+                break;
+            }
+        }
+    }
+
+    if (match) {
+        hExecve++;
+        LOGI("HOOK execve intercepted for path! pid=%d", getpid());
+        g_inside_hook = false;
+        // گزارش عدم وجود فایل به پروسه فراخوانی‌کننده
+        errno = ENOENT;
+        return -1;
+    }
+
+    int res = gExecve ? gExecve(filename, argv, envp) : execve(filename, argv, envp);
     g_inside_hook = false;
     return res;
 }
@@ -358,7 +378,7 @@ static int fakeIoctl(int fd, unsigned long request, void* arg) {
 
     if (isFakeFd(fd) && request == FIONREAD) {
         if (arg) {
-            *reinterpret_cast<int*>(arg) = 0;
+            *reinterpret_cast<int*>(arg) = 0; // کست به int* برای تنظیم مقدار صفر
         }
         g_inside_hook = false;
         return 0;
@@ -381,7 +401,6 @@ static long fakeSyscall(long number, long a1, long a2, long a3, long a4, long a5
         const char* path = reinterpret_cast<const char*>(a2);
         int flags = static_cast<int>(a3);
         if (isKossherPath(path) && (flags & O_ACCMODE) != O_WRONLY) {
-            hSyscallOpenat++;
             int fd = makeFakeFd(marker());
             if (fd >= 0) {
                 LOGI("HOOK syscall(SYS_openat) %s pid=%d fd=%d", path, getpid(), fd);
@@ -422,6 +441,7 @@ static void* gIoctlAddr;
 static void* gSyscallAddr;
 static void* gSystemAddr;
 static void* gPopenAddr;
+static void* gExecveAddr;
 
 static bool hookLibcSymbol(MSHookFunctionFn h, const char* n, void* repl, void** orig, void** addrStore) {
     if (!gLibc || !n || !orig) return false;
@@ -470,9 +490,9 @@ static void libcScan() {
     hookLibcSymbol(gHook, "ioctl", (void*)fakeIoctl, (void**)&gIoctl, &gIoctlAddr);
     hookLibcSymbol(gHook, "syscall", (void*)fakeSyscall, (void**)&gSyscall, &gSyscallAddr);
     
-    // اضافه‌شدن هوک‌های system و popen
     hookLibcSymbol(gHook, "system", (void*)fakeSystem, (void**)&gSystem, &gSystemAddr);
     hookLibcSymbol(gHook, "popen", (void*)fakePopen, (void**)&gPopen, &gPopenAddr);
+    hookLibcSymbol(gHook, "execve", (void*)fakeExecve, (void**)&gExecve, &gExecveAddr);
 }
 
 static bool installHook() {
@@ -482,7 +502,7 @@ static bool installHook() {
     gHook = (MSHookFunctionFn)a;
     gInstalled = 1;
     libcScan();
-    LOGI("HOOKS_PROFILE=FULL_SAFE_WITH_SHELL");
+    LOGI("HOOKS_PROFILE=FULL_SAFE_WITH_EXECVE");
     return true;
 }
 
