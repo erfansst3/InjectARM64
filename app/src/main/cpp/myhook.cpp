@@ -30,8 +30,6 @@ using Open2Fn=int(*)(const char*,int);
 using OpenAt2Fn=int(*)(int,const char*,int);
 using PreadChkFn=ssize_t(*)(int,void*,size_t,off_t,size_t);
 using MmapFn=void*(*)(void*,size_t,int,int,int,off_t);
-using IoctlFn=int(*)(int,int,...);
-using Ioctl3Fn=int(*)(int,int,void*);
 using FopenFn=FILE*(*)(const char*,const char*);
 
 static MSHookFunctionFn gHook;
@@ -46,7 +44,6 @@ static PreadFn gPread64;
 static PreadChkFn gPread64Chk;
 static MmapFn gMmap;
 static MmapFn gMmap64;
-static IoctlFn gIoctl;
 static FopenFn gFopen;
 static std::atomic<int> gInstalled{0},gGspaceFound{0};
 static std::atomic<int> hOpenAt{0},hOpen{0},hFopen{0},hPread{0},hMmap{0},hIoctl{0},hRead{0},hFread{0};
@@ -178,14 +175,14 @@ static std::string marker(){
         "READ_HIT=%d\nFREAD_HIT=%d\n"
         "HOOK_OPENAT=%d\nHOOK_OPEN=%d\nHOOK_FOPEN=%d\n"
         "HOOK_PREAD=%d\nHOOK_MMAP=%d\nHOOK_IOCTL=%d\n" 
-        "STABLE_HOOK_SET=open,openat,__openat,__open,fopen,pread,mmap\n"
+        "ACTIVE_HOOK_SET=open,openat,__open_2,__openat_2,fopen,fread,read,pread,pread64,mmap,mmap64\n"
+        "VA_IOUNIFORMER_PRESERVED=__openat,__open\n"
         "DIRECT_SYSCALL=NOT_HOOKABLE\n",
         getpid(),hOpenAt.load(),hOpen.load(),hFopen.load(),
         hPread.load(),hMmap.load(),hIoctl.load(),hRead.load(),hFread.load(),
         gOpenAt!=nullptr,gOpen!=nullptr,gFopen!=nullptr,
         gPread!=nullptr||gPread64!=nullptr||gPread64Chk!=nullptr,
-        gMmap!=nullptr||gMmap64!=nullptr,
-        gIoctl!=nullptr);
+        gMmap!=nullptr||gMmap64!=nullptr);
     return n>0?std::string(b,(size_t)n):std::string();
 }
 
@@ -289,15 +286,6 @@ static void* fakeMmap64(void* a,size_t n,int p,int f,int fd,off_t o){
     return gMmap64?gMmap64(a,n,p,f,fd,o):(gMmap?gMmap(a,n,p,f,fd,o):MAP_FAILED);
 }
 
-static int fakeIoctl(int fd,int req,...){
-    hIoctl++;
-    if(!gIoctl){errno=ENOSYS;return -1;}
-    va_list ap;
-    va_start(ap,req);
-    void* arg=va_arg(ap,void*);
-    va_end(ap);
-    return gIoctl(fd,req,arg);
-}
 
 static void* gLibc;
 static void* gOpenAddr;
@@ -309,7 +297,6 @@ static void* gPreadAddr;
 static void* gFreadAddr;
 static void* gFopenAddr;
 static void* gMmapAddr;
-static void* gIoctlAddr;
 
 using ReadFn=ssize_t(*)(int,void*,size_t);
 using FreadFn=size_t(*)(void*,size_t,size_t,FILE*);
@@ -375,7 +362,6 @@ static void libcScan(){
     hookLibcSymbol(gHook,"fread",(void*)fakeFread,(void**)&gFread,&gFreadAddr);
     hookLibcSymbol(gHook,"mmap",(void*)fakeMmap,(void**)&gMmap,&gMmapAddr);
     hookLibcSymbol(gHook,"mmap64",(void*)fakeMmap64,(void**)&gMmap64,&gMmapAddr);
-    hookLibcSymbol(gHook,"ioctl",(void*)fakeIoctl,(void**)&gIoctl,&gIoctlAddr);
 }
 
 static bool installHook(){
@@ -387,8 +373,8 @@ static bool installHook(){
     libcScan();
     LOGI("HOOKS libc=%p open=%d openat=%d __open_2=%d __openat_2=%d fopen=%d fread=%d read=%d pread=%d pread64=%d mmap=%d mmap64=%d ioctl=%d",
          gLibc,!!gOpen,!!gOpenAt,!!gOpen2,!!gOpenAt2,!!gFopen,!!gFread,!!gRead,
-         !!gPread,!!gPread64,!!gMmap,!!gMmap64,!!gIoctl);
-    LOGI("VA_IOUNIFORMER_COLLISION_AVOIDED __openat=YES __open=YES");
+         !!gPread,!!gPread64,!!gMmap,!!gMmap64);
+    LOGI("VA_IOUNIFORMER_PRESERVED __openat=YES __open=YES ioctl=NOT_HOOKED");
     return true;
 }
 
