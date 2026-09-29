@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.22.1)
 project(procmap_test)
+enable_language(ASM)
+set_source_files_properties(trace.S PROPERTIES LANGUAGE ASM)
 add_library(procmap_test SHARED proc_detector.cpp trace.S)
 find_library(log-lib log)
 find_library(dl-lib dl)
