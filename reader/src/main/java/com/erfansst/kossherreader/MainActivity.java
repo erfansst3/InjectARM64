@@ -14,35 +14,25 @@ public final class MainActivity extends Activity {
 
         TextView out = new TextView(this);
         out.setTextSize(14);
-        out.setPadding(24, 24, 24, 24);
-        out.setText("READING /proc/" + Process.myPid() + "/kossher ...");
+        out.setPadding(24,24,24,24);
         setContentView(out);
 
         final String path = "/proc/" + Process.myPid() + "/kossher";
-
         new Thread(() -> {
             String result;
-            try {
-                FileInputStream in = new FileInputStream(path);
-                byte[] buf = new byte[4096];
-                int n;
-                try {
-                    n = in.read(buf);
-                } finally {
-                    in.close();
-                }
-
+            try (FileInputStream in = new FileInputStream(path)) {
+                byte[] b = new byte[4096];
+                int n = in.read(b);
                 if (n < 0) {
                     result = "READ=EOF\nPATH=" + path;
                 } else {
                     result = "READ=OK\nPATH=" + path + "\n\n"
-                            + new String(buf, 0, n, StandardCharsets.UTF_8);
+                            + new String(b, 0, n, StandardCharsets.UTF_8);
                 }
-            } catch (Exception e) {
+            } catch (Throwable e) {
                 result = "READ=FAILED\nPATH=" + path + "\n"
-                        + e.getClass().getName() + ": " + String.valueOf(e.getMessage());
+                        + e.getClass().getSimpleName() + ": " + e.getMessage();
             }
-
             final String text = result;
             runOnUiThread(() -> out.setText(text));
         }).start();
