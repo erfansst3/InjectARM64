@@ -17,7 +17,7 @@ public final class MainActivity extends Activity {
         out.setPadding(24,24,24,24);
         setContentView(out);
 
-        final String path = "/proc/" + Process.myPid() + "/kossher";
+        final String path = "/proc/self/kossher";
         new Thread(() -> {
             String result;
             try (FileInputStream in = new FileInputStream(path)) {
