@@ -16,6 +16,8 @@
 #include <pthread.h>
 #include <errno.h>
 #include <utility>
+#include <set>
+#include <mutex>
 
 #define TAG "InjectARM64"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,TAG,__VA_ARGS__)
@@ -33,6 +35,7 @@ using MmapFn=void*(*)(void*,size_t,int,int,int,off_t);
 using FopenFn=FILE*(*)(const char*,const char*);
 using IoctlFn=int(*)(int,unsigned long,void*);
 using SyscallFn=long(*)(long,long,long,long,long,long,long);
+using CloseFn=int(*)(int);
 
 static MSHookFunctionFn gHook;
 static OpenFn gOpen;
@@ -49,6 +52,7 @@ static MmapFn gMmap64;
 static FopenFn gFopen;
 static IoctlFn gIoctl;
 static SyscallFn gSyscall;
+static CloseFn gClose;
 
 static std::atomic<int> gInstalled{0},gGspaceFound{0};
 static std::atomic<int> hOpenAt{0},hOpen{0},hFopen{0},hPread{0},hMmap{0},hIoctl{0},hSyscall{0},hRead{0},hFread{0};
@@ -56,6 +60,30 @@ static std::atomic<int> hSyscallOpenat{0};
 
 // محافظ محلی نخ جهت جلوگیری از حلقه بازگشتی بی‌نهایت و کرش
 static thread_local bool g_inside_hook = false;
+
+// مدیریت و ثبت لیست FDهای فیک
+static std::set<int> g_fake_fds;
+static std::mutex g_fds_mutex;
+
+static void registerFakeFd(int fd) {
+    if (fd >= 0) {
+        std::lock_guard<std::mutex> lock(g_fds_mutex);
+        g_fake_fds.insert(fd);
+    }
+}
+
+static void unregisterFakeFd(int fd) {
+    if (fd >= 0) {
+        std::lock_guard<std::mutex> lock(g_fds_mutex);
+        g_fake_fds.erase(fd);
+    }
+}
+
+static bool isFakeFd(int fd) {
+    if (fd < 0) return false;
+    std::lock_guard<std::mutex> lock(g_fds_mutex);
+    return g_fake_fds.find(fd) != g_fake_fds.end();
+}
 
 struct HookRecord{void* addr;void* orig;void* repl;};
 static HookRecord gHookRecords[32];static int gHookRecordCount=0;
@@ -124,7 +152,6 @@ static uintptr_t findGSpaceExport(const char* name){
 
 static bool isKossherPath(const char* p){
     if(!p) return false;
-    // شناسایی مسیرهای حساس proc maps / status در کنار kossher
     if(strstr(p, "/maps") || strstr(p, "/status") || strstr(p, "/cmdline") || strstr(p, "kossher")) return true;
     if(strncmp(p,"/proc/",6) == 0){
         p+=6;
@@ -165,10 +192,16 @@ static int makeFakeFd(const std::string& d){
         n+=(size_t)w;
     }
     syscall(SYS_lseek,fd,0,SEEK_SET);
+    registerFakeFd(fd); // ثبت FD فیک در لیست
     return fd;
 #else
     return -1;
 #endif
+}
+
+static int fakeClose(int fd) {
+    unregisterFakeFd(fd);
+    return gClose ? gClose(fd) : close(fd);
 }
 
 static int fakeOpenAt(int d,const char* p,int f,...){
@@ -278,7 +311,7 @@ static FILE* fakeFopen(const char* p,const char* m){
     return res;
 }
 
-// پروکسی ایمن ioctl برای جلوگیری از کرش درایورها
+// پروکسی هوشمند ioctl برای شبیه‌سازی کامل رفتار procfs روی FDهای فیک
 static int fakeIoctl(int fd, unsigned long request, void* arg) {
     if (g_inside_hook || fd < 0) {
         return gIoctl ? gIoctl(fd, request, arg) : ioctl(fd, request, arg);
@@ -286,12 +319,20 @@ static int fakeIoctl(int fd, unsigned long request, void* arg) {
     g_inside_hook = true;
     hIoctl++;
 
+    // اگر درخواست روی FD فیک باشد و دستور FIONREAD باشد
+    if (isFakeFd(fd) && request == FIONREAD) {
+        if (arg) {
+            *reinterpret_cast<int*>(arg) = 0; // دقیقا مثل /proc واقعی لینوکس مقدار 0 قرار بده
+        }
+        g_inside_hook = false;
+        return 0; // گزارش موفقیت‌آمیز بودن ioctl با مقدار 0
+    }
+
     int res = gIoctl ? gIoctl(fd, request, arg) : ioctl(fd, request, arg);
     g_inside_hook = false;
     return res;
 }
 
-// پروکسی ایمن syscall برای رهگیری openat
 static long fakeSyscall(long number, long a1, long a2, long a3, long a4, long a5, long a6) {
     if (g_inside_hook) {
         return gSyscall ? gSyscall(number, a1, a2, a3, a4, a5, a6) : syscall(number, a1, a2, a3, a4, a5, a6);
@@ -327,6 +368,21 @@ static long fakeSyscall(long number, long a1, long a2, long a3, long a4, long a5
                 g_inside_hook = false;
                 return fd;
             }
+        }
+    }
+#endif
+
+#ifdef SYS_ioctl
+    if (number == SYS_ioctl) {
+        int fd = static_cast<int>(a1);
+        unsigned long req = static_cast<unsigned long>(a2);
+        void* arg = reinterpret_cast<void*>(a3);
+        if (isFakeFd(fd) && req == FIONREAD) {
+            if (arg) {
+                *reinterpret_cast<int*>(arg) = 0;
+            }
+            g_inside_hook = false;
+            return 0;
         }
     }
 #endif
@@ -387,8 +443,8 @@ static void libcScan(){
     hookLibcSymbol(gHook,"__open64_2",(void*)fakeOpen2,(void**)&gOpen64_2,&gOpen2Addr);
     hookLibcSymbol(gHook,"__openat64_2",(void*)fakeOpenAt2,(void**)&gOpenAt64_2,&gOpenAt2Addr);
     hookLibcSymbol(gHook,"fopen",(void*)fakeFopen,(void**)&gFopen,&gFopenAddr);
+    hookLibcSymbol(gHook,"close",(void*)fakeClose,(void**)&gClose,nullptr);
 
-    // افزودن ioctl و syscall به همان مکانیزم MSHookFunction پایه خودتان
     hookLibcSymbol(gHook,"ioctl",(void*)fakeIoctl,(void**)&gIoctl,&gIoctlAddr);
     hookLibcSymbol(gHook,"syscall",(void*)fakeSyscall,(void**)&gSyscall,&gSyscallAddr);
 }
@@ -401,8 +457,6 @@ static bool installHook(){
     gInstalled=1;
     libcScan();
     LOGI("HOOKS_PROFILE=FULL_SAFE");
-    LOGI("HOOKS libc=%p open=%d openat=%d __open_2=%d __openat_2=%d fopen=%d ioctl=%d syscall=%d",
-         gLibc,!!gOpen,!!gOpenAt,!!gOpen2,!!gOpenAt2,!!gFopen,!!gIoctl,!!gSyscall);
     return true;
 }
 
