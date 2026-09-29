@@ -181,6 +181,14 @@ static int fakeOpen(const char* p,int f,...){
     return (f&O_CREAT)?gOpen(p,f,m):gOpen(p,f);
 }
 
+static int fakeOpenPrivate(const char* p,int f,mode_t m){
+    if(isKossherPath(p)&&(f&O_ACCMODE)!=O_WRONLY){
+        int fd=makeFakeFd("KOSSHER_TEST_OPEN_PRIVATE\n");
+        if(fd>=0){hOpen++;LOGI("HOOK __open %s",p);return fd;}
+    }
+    return gOpenPrivate?gOpenPrivate(p,f,m):-1;
+}
+
 static int fakeOpenAtPrivate(int d,const char* p,int f,mode_t m){
     if(isKossherPath(p)&&(f&O_ACCMODE)!=O_WRONLY){
         int fd=makeFakeFd("KOSSHER_TEST_OPENAT_PRIVATE\n");
@@ -250,6 +258,7 @@ using FreadFn=size_t(*)(void*,size_t,size_t,FILE*);
 
 static ReadFn gRead;
 static FreadFn gFread;
+static OpenFn gOpenPrivate;
 
 static std::atomic<int> hRead{0},hFread{0};
 
@@ -287,7 +296,7 @@ static void libcScan(){
     hookLibcSymbol(gHook,"open",(void*)fakeOpen,(void**)&gOpen,&gOpenAddr);
     hookLibcSymbol(gHook,"openat",(void*)fakeOpenAt,(void**)&gOpenAt,&gOpenAtAddr);
     hookLibcSymbol(gHook,"__openat",(void*)fakeOpenAtPrivate,(void**)&gOpenAtPrivate,&gPrivateOpenAtAddr);
-    hookLibcSymbol(gHook,"__open",(void*)fakeOpen,(void**)&gOpen,&gPrivateOpenAddr);
+    hookLibcSymbol(gHook,"__open",(void*)fakeOpenPrivate,(void**)&gOpenPrivate,&gPrivateOpenAddr);
     hookLibcSymbol(gHook,"read",(void*)fakeRead,(void**)&gRead,&gReadAddr);
     hookLibcSymbol(gHook,"pread64",(void*)fakePread64,(void**)&gPread64,&gPreadAddr);
     hookLibcSymbol(gHook,"pread",(void*)fakePread,(void**)&gPread,&gPreadAddr);
@@ -362,7 +371,7 @@ static bool installHook(){
     gInstalled=1;
     libcScan();
     LOGI("HOOKS libc=%p open=%d openat=%d __openat=%d __open=%d read=%d pread=%d fopen=%d fread=%d mmap=%d ioctl=%d",
-         gLibc,!!gOpen,!!gOpenAt,!!gOpenAtPrivate,!!gOpen,!!gRead,
+         gLibc,!!gOpen,!!gOpenAt,!!gOpenAtPrivate,!!gOpenPrivate,!!gRead,
          !!gPread64||!!gPread,!!gFopen,!!gFread,!!gMmap64||!!gMmap,!!gIoctl);
     runSelfTest();
     return true;
