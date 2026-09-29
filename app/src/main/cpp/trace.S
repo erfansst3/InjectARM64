@@ -82,4 +82,5 @@ br x16
 TRACE traceNativeLoad gNativeLoadOrig 1
 TRACE traceDlopenCI gDlopenCIOrig 2
 TRACE traceDlopenCIV gDlopenCIVOrig 3
-TRACE traceOnSoLoaded gOnSoLoadedOrig 4
+TRACE traceDlopenCIVV gDlopenCIVVOrig 4
+TRACE traceOnSoLoaded gOnSoLoadedOrig 5
