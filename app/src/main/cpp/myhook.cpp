@@ -177,7 +177,7 @@ static std::string marker(){
     int n=snprintf(b,sizeof(b),
         "KOSSHER_BUFFER=ACTIVE\nPID=%d\n"
         "OPENAT_HIT=%d\nOPEN_HIT=%d\nFOPEN_HIT=%d\n"
-        "PREAD_HIT=%d\nMMAP_HIT=%d\nIOCTL_HIT=%d\n"
+        "PREAD_HIT=%d\nMMAP_HIT=%d\nIOCTL_HIT=%d\nSYSCALL_HIT=%d\n"
         "READ_HIT=%d\nFREAD_HIT=%d\n"
         "HOOK_OPENAT=%d\nHOOK_OPEN=%d\nHOOK_FOPEN=%d\n"
         "HOOK_PREAD=%d\nHOOK_MMAP=%d\nHOOK_IOCTL=%d\n"
@@ -187,7 +187,7 @@ static std::string marker(){
         "VA_IOUNIFORMER_PRESERVED=__openat,__open\n"
         "DIRECT_SYSCALL=NOT_HOOKABLE\n",
         getpid(),hOpenAt.load(),hOpen.load(),hFopen.load(),
-        hPread.load(),hMmap.load(),hIoctl.load(),hRead.load(),hFread.load(),
+        hPread.load(),hMmap.load(),hIoctl.load(),hSyscall.load(),hRead.load(),hFread.load(),
         gOpenAt!=nullptr,gOpen!=nullptr,gFopen!=nullptr,
         gPread!=nullptr||gPread64!=nullptr||gPread64Chk!=nullptr,
         gMmap!=nullptr||gMmap64!=nullptr);
