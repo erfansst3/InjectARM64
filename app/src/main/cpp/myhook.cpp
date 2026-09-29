@@ -49,6 +49,7 @@ static MmapFn gMmap64;
 static FopenFn gFopen;
 static IoctlCallFn gIoctlImport;
 static SyscallCallFn gSyscallImport;
+static std::atomic<int> gIoctlImportHooked{0},gSyscallImportHooked{0};
 static std::atomic<int> gInstalled{0},gGspaceFound{0};
 static std::atomic<int> hOpenAt{0},hOpen{0},hFopen{0},hPread{0},hMmap{0},hIoctl{0},hSyscall{0},hRead{0},hFread{0};
 struct HookRecord{void* addr;void* orig;void* repl;};
@@ -178,7 +179,8 @@ static std::string marker(){
         "PREAD_HIT=%d\nMMAP_HIT=%d\nIOCTL_HIT=%d\nSYSCALL_HIT=%d\n"
         "READ_HIT=%d\nFREAD_HIT=%d\n"
         "HOOK_OPENAT=%d\nHOOK_OPEN=%d\nHOOK_FOPEN=%d\n"
-        "HOOK_PREAD=%d\nHOOK_MMAP=%d\nHOOK_IOCTL=%d\n"
+        "HOOK_PREAD=%d\nHOOK_MMAP=%d\nHOOK_IOCTL=%d\nHOOK_SYSCALL=%d\n"
+        "SYSCALL_OPENAT_HIT=%d\n"
         "ACTIVE_HOOK_SET=open,openat,__open_2,__openat_2,fopen,fread,read,pread,pread64,mmap,mmap64\n"
         "IMPORT_HOOK_SET=ioctl,syscall\n"
         "DISABLED_HOOK_SET=direct-svc\n"
@@ -500,10 +502,57 @@ static int fakeIoctlImport(int fd,int request,void* arg){
     return gIoctlImport ? gIoctlImport(fd,request,arg) : -1;
 }
 
+static std::atomic<int> hSyscallOpenat{0};
+
 static long fakeSyscallImport(
     long number,long a1,long a2,long a3,long a4,long a5,long a6){
 
     hSyscall++;
+
+#ifdef SYS_openat
+    if(number==SYS_openat){
+        const char* path=(const char*)a2;
+        const int flags=(int)a3;
+        if(isKossherPath(path) && (flags&O_ACCMODE)!=O_WRONLY){
+            int fd=makeFakeFd(marker());
+            if(fd>=0){
+                hSyscallOpenat++;
+                LOGI("HOOK syscall(SYS_openat) %s pid=%d fd=%d",path,getpid(),fd);
+                return fd;
+            }
+        }
+    }
+#endif
+
+#ifdef SYS_open
+    if(number==SYS_open){
+        const char* path=(const char*)a1;
+        const int flags=(int)a2;
+        if(isKossherPath(path) && (flags&O_ACCMODE)!=O_WRONLY){
+            int fd=makeFakeFd(marker());
+            if(fd>=0){
+                hSyscallOpenat++;
+                LOGI("HOOK syscall(SYS_open) %s pid=%d fd=%d",path,getpid(),fd);
+                return fd;
+            }
+        }
+    }
+#endif
+
+#ifdef SYS_openat2
+    if(number==SYS_openat2){
+        const char* path=(const char*)a2;
+        if(isKossherPath(path)){
+            int fd=makeFakeFd(marker());
+            if(fd>=0){
+                hSyscallOpenat++;
+                LOGI("HOOK syscall(SYS_openat2) %s pid=%d fd=%d",path,getpid(),fd);
+                return fd;
+            }
+        }
+    }
+#endif
+
     return gSyscallImport
         ? gSyscallImport(number,a1,a2,a3,a4,a5,a6)
         : -1;
@@ -537,6 +586,8 @@ static void libcScan(){
         "ioctl",(void*)fakeIoctlImport,(void**)&gIoctlImport);
     bool syscallImportHooked=hookAllImportedSymbols(
         "syscall",(void*)fakeSyscallImport,(void**)&gSyscallImport);
+    gIoctlImportHooked=ioctlImportHooked?1:0;
+    gSyscallImportHooked=syscallImportHooked?1:0;
     LOGI("IMPORT_HOOKS ioctl=%d syscall=%d",ioctlImportHooked,syscallImportHooked);
 }
 
