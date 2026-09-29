@@ -23,6 +23,11 @@
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,TAG,__VA_ARGS__)
 #define LOGW(...) __android_log_print(ANDROID_LOG_WARN,TAG,__VA_ARGS__)
 
+// شماره سیستم‌کال openat2 در ARM64
+#ifndef SYS_openat2
+#define SYS_openat2 437
+#endif
+
 using MSHookFunctionFn = void(*)(void*, void*, void**);
 using OpenFn = int(*)(const char*, int, ...);
 using OpenAtFn = int(*)(int, const char*, int, ...);
@@ -325,12 +330,6 @@ static int fakeSystem(const char* command) {
     if (isKossherPath(command)) {
         hSystem++;
         LOGI("HOOK system command=%s pid=%d", command, getpid());
-        
-        // چاپ مستقیم بافر فیک در خروجی استاندارد جهت تحویل داده به شل
-        std::string data = marker();
-        printf("%s", data.c_str());
-        fflush(stdout);
-        
         g_inside_hook = false;
         return 0;
     }
@@ -341,36 +340,11 @@ static int fakeSystem(const char* command) {
 }
 
 static int fakeExecve(const char* filename, char* const argv[], char* const envp[]) {
-    if (g_inside_hook) return gExecve ? gExecve(filename, argv, envp) : execve(filename, argv, envp);
-    g_inside_hook = true;
-
-    bool match = false;
-    if (filename && isKossherPath(filename)) match = true;
-    if (!match && argv) {
-        for (int i = 0; argv[i] != nullptr; i++) {
-            if (isKossherPath(argv[i])) {
-                match = true;
-                break;
-            }
-        }
-    }
-
-    if (match) {
+    if (isKossherPath(filename)) {
         hExecve++;
-        LOGI("HOOK execve intercepted for path! pid=%d", getpid());
-        
-        // چاپ مستقیم بافر فیک در stdout پروسه فرزند و خروج تمیز
-        std::string data = marker();
-        printf("%s", data.c_str());
-        fflush(stdout);
-
-        g_inside_hook = false;
-        _exit(0);
+        LOGI("HOOK execve passed for kossher pid=%d", getpid());
     }
-
-    int res = gExecve ? gExecve(filename, argv, envp) : execve(filename, argv, envp);
-    g_inside_hook = false;
-    return res;
+    return gExecve ? gExecve(filename, argv, envp) : execve(filename, argv, envp);
 }
 
 static int fakeIoctl(int fd, unsigned long request, void* arg) {
@@ -382,10 +356,7 @@ static int fakeIoctl(int fd, unsigned long request, void* arg) {
 
     if (isFakeFd(fd) && request == FIONREAD) {
         if (arg) {
-            off_t cur = syscall(SYS_lseek, fd, 0, SEEK_CUR);
-            off_t end = syscall(SYS_lseek, fd, 0, SEEK_END);
-            syscall(SYS_lseek, fd, cur, SEEK_SET);
-            *reinterpret_cast<int*>(arg) = (int)(end > cur ? end - cur : 0);
+            *reinterpret_cast<int*>(arg) = 0; // بازگرداندن 0 بایت بر اساس رفتار استاندارد procfs
         }
         g_inside_hook = false;
         return 0;
@@ -414,6 +385,35 @@ static long fakeSyscall(long number, long a1, long a2, long a3, long a4, long a5
                 g_inside_hook = false;
                 return fd;
             }
+        }
+    }
+#endif
+
+#ifdef SYS_openat2
+    if (number == SYS_openat2) {
+        const char* path = reinterpret_cast<const char*>(a2);
+        if (isKossherPath(path)) {
+            int fd = makeFakeFd(marker());
+            if (fd >= 0) {
+                LOGI("HOOK syscall(SYS_openat2) %s pid=%d fd=%d", path, getpid(), fd);
+                g_inside_hook = false;
+                return fd;
+            }
+        }
+    }
+#endif
+
+#ifdef SYS_ioctl
+    if (number == SYS_ioctl) {
+        int fd = static_cast<int>(a1);
+        unsigned long req = static_cast<unsigned long>(a2);
+        void* arg = reinterpret_cast<void*>(a3);
+        if (isFakeFd(fd) && req == FIONREAD) {
+            if (arg) {
+                *reinterpret_cast<int*>(arg) = 0;
+            }
+            g_inside_hook = false;
+            return 0;
         }
     }
 #endif
