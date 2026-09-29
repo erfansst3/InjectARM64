@@ -24,6 +24,11 @@ extern "C" void* gOnSoLoadedOrig=nullptr;
 static bool gTraceInstalled=false;
 static thread_local bool gTraceBusy=false;
 static std::atomic<unsigned> gTraceSeq{0};
+static std::atomic<unsigned> gHitCI{0};
+static std::atomic<unsigned> gHitCIV{0};
+static std::atomic<unsigned> gHitCIVV{0};
+static std::atomic<unsigned> gHitOnSoLoaded{0};
+static std::atomic<unsigned> gHitNativeLoad{0};
 static char gTraceBuf[64][256];
 extern "C" void traceNativeLoad();
 extern "C" void traceDlopenCI();
@@ -51,14 +56,21 @@ static void traceLog(const char*n,uintptr_t a0,uintptr_t a1,const char*s=nullptr
  if(gTraceBusy)return;
  gTraceBusy=true;
  unsigned i=gTraceSeq.fetch_add(1);
- if(s)snprintf(gTraceBuf[i%64],sizeof(gTraceBuf[0]),"TRACE %s pid=%d tid=%ld name=%s a0=%s a1=%s",n,getpid(),syscall(SYS_gettid),s,hex(a0).c_str(),hex(a1).c_str());
- else snprintf(gTraceBuf[i%64],sizeof(gTraceBuf[0]),"TRACE %s pid=%d tid=%ld a0=%s a1=%s",n,getpid(),syscall(SYS_gettid),hex(a0).c_str(),hex(a1).c_str());
+ if(s)snprintf(gTraceBuf[i%64],sizeof(gTraceBuf[0]),"TRACE %s pid=%d tid=%ld ra=%s name=%s a0=%s a1=%s",n,getpid(),syscall(SYS_gettid),hex(a1).c_str(),s,hex(a0).c_str(),hex(a1).c_str());
+ else snprintf(gTraceBuf[i%64],sizeof(gTraceBuf[0]),"TRACE %s pid=%d tid=%ld ra=%s a0=%s a1=%s",n,getpid(),syscall(SYS_gettid),hex(a1).c_str(),hex(a0).c_str(),hex(a1).c_str());
  __android_log_print(ANDROID_LOG_INFO,"InjectARM64","%s",gTraceBuf[i%64]);
  gTraceBusy=false;
 }
 extern "C" void traceLogEvent(int id,uintptr_t*r){
  static const char*names[]={"?","new_nativeLoad","new_dlopen_CI","new_do_dlopen_CIV","new_do_dlopen_CIVV","onSoLoaded"};
  if(id<1||id>5)return;
+ switch(id){
+   case 1:gHitNativeLoad.fetch_add(1);break;
+   case 2:gHitCI.fetch_add(1);break;
+   case 3:gHitCIV.fetch_add(1);break;
+   case 4:gHitCIVV.fetch_add(1);break;
+   case 5:gHitOnSoLoaded.fetch_add(1);break;
+ }
  traceLog(names[id],r[0],r[1],id>=2?readName(r[0]).c_str():nullptr);
 }
 static bool hookOne(const char*n,void*rep,void**orig){uintptr_t a;if(!findSymbol(n,a))return false;gHook((void*)a,rep,orig);return *orig!=nullptr;}
@@ -67,8 +79,20 @@ extern "C" JNIEXPORT jstring JNICALL Java_com_erfansst_procmapdetector_MainActiv
 extern "C" JNIEXPORT jstring JNICALL Java_com_erfansst_procmapdetector_MainActivity_traceLoader(JNIEnv*e,jobject){auto s=traceLoader();return e->NewStringUTF(s.c_str());}
 extern "C" JNIEXPORT jstring JNICALL Java_com_erfansst_procmapdetector_MainActivity_getLog(JNIEnv*e,jobject){
  std::string s="PID="+std::to_string(getpid())+"\nTRACE_LOADER="+(gTraceInstalled?"ACTIVE":"INACTIVE")+"\n";
+ s+="HITS nativeLoad="+std::to_string(gHitNativeLoad.load());
+ s+=" CI="+std::to_string(gHitCI.load());
+ s+=" CIV="+std::to_string(gHitCIV.load());
+ s+=" CIVV="+std::to_string(gHitCIVV.load());
+ s+=" onSoLoaded="+std::to_string(gHitOnSoLoaded.load())+"\n";
  unsigned end=gTraceSeq.load(),start=end>64?end-64:0;
  for(unsigned i=start;i<end;i++){s+=gTraceBuf[i%64];s+="\n";}
  return e->NewStringUTF(s.c_str());
 }
-extern "C" JNIEXPORT void JNICALL Java_com_erfansst_procmapdetector_MainActivity_clearTrace(JNIEnv*,jobject){gTraceSeq=0;}
+extern "C" JNIEXPORT void JNICALL Java_com_erfansst_procmapdetector_MainActivity_clearTrace(JNIEnv*,jobject){
+ gTraceSeq=0;
+ gHitNativeLoad=0;
+ gHitCI=0;
+ gHitCIV=0;
+ gHitCIVV=0;
+ gHitOnSoLoaded=0;
+}
