@@ -174,8 +174,9 @@ static std::string marker(){
         "PREAD_HIT=%d\nMMAP_HIT=%d\nIOCTL_HIT=%d\n"
         "READ_HIT=%d\nFREAD_HIT=%d\n"
         "HOOK_OPENAT=%d\nHOOK_OPEN=%d\nHOOK_FOPEN=%d\n"
-        "HOOK_PREAD=%d\nHOOK_MMAP=%d\nHOOK_IOCTL=%d\n" 
-        "ACTIVE_HOOK_SET=open,openat,__open_2,__openat_2,fopen,fread,read,pread,pread64,mmap,mmap64\n"
+        "HOOK_PREAD=%d\nHOOK_MMAP=%d\nHOOK_IOCTL=%d\n"
+        "ACTIVE_HOOK_SET=open,openat,__open_2,__openat_2,fopen\n"
+        "DISABLED_HOOK_SET=read,fread,pread,pread64,mmap,mmap64,ioctl\n"
         "VA_IOUNIFORMER_PRESERVED=__openat,__open\n"
         "DIRECT_SYSCALL=NOT_HOOKABLE\n",
         getpid(),hOpenAt.load(),hOpen.load(),hFopen.load(),
@@ -355,13 +356,9 @@ static void libcScan(){
     hookLibcSymbol(gHook,"__openat_2",(void*)fakeOpenAt2,(void**)&gOpenAt2,&gOpenAt2Addr);
     hookLibcSymbol(gHook,"__open64_2",(void*)fakeOpen2,(void**)&gOpen64_2,&gOpen2Addr);
     hookLibcSymbol(gHook,"__openat64_2",(void*)fakeOpenAt2,(void**)&gOpenAt64_2,&gOpenAt2Addr);
-    hookLibcSymbol(gHook,"read",(void*)fakeRead,(void**)&gRead,&gReadAddr);
-    hookLibcSymbol(gHook,"pread64",(void*)fakePread64,(void**)&gPread64,&gPreadAddr);
-    hookLibcSymbol(gHook,"pread",(void*)fakePread,(void**)&gPread,&gPreadAddr);
+    // Isolation profile: keep only low-risk file-open hooks while diagnosing
+    // the GSpace crash. Do not patch read/pread/fread/mmap yet.
     hookLibcSymbol(gHook,"fopen",(void*)fakeFopen,(void**)&gFopen,&gFopenAddr);
-    hookLibcSymbol(gHook,"fread",(void*)fakeFread,(void**)&gFread,&gFreadAddr);
-    hookLibcSymbol(gHook,"mmap",(void*)fakeMmap,(void**)&gMmap,&gMmapAddr);
-    hookLibcSymbol(gHook,"mmap64",(void*)fakeMmap64,(void**)&gMmap64,&gMmapAddr);
 }
 
 static bool installHook(){
@@ -371,10 +368,11 @@ static bool installHook(){
     gHook=(MSHookFunctionFn)a;
     gInstalled=1;
     libcScan();
-    LOGI("HOOKS libc=%p open=%d openat=%d __open_2=%d __openat_2=%d fopen=%d fread=%d read=%d pread=%d pread64=%d mmap=%d mmap64=%d ioctl=%d",
-         gLibc,!!gOpen,!!gOpenAt,!!gOpen2,!!gOpenAt2,!!gFopen,!!gFread,!!gRead,
-         !!gPread,!!gPread64,!!gMmap,!!gMmap64);
-    LOGI("VA_IOUNIFORMER_PRESERVED __openat=YES __open=YES ioctl=NOT_HOOKED");
+    LOGI("HOOKS_PROFILE=OPEN_ONLY");
+    LOGI("HOOKS libc=%p open=%d openat=%d __open_2=%d __openat_2=%d fopen=%d",
+         gLibc,!!gOpen,!!gOpenAt,!!gOpen2,!!gOpenAt2,!!gFopen);
+    LOGI("DISABLED read=fread=pread=pread64=mmap=mmap64=ioctl");
+    LOGI("VA_IOUNIFORMER_PRESERVED __openat=YES __open=YES");
     return true;
 }
 
