@@ -31,6 +31,8 @@ using OpenAt2Fn=int(*)(int,const char*,int);
 using PreadChkFn=ssize_t(*)(int,void*,size_t,off_t,size_t);
 using MmapFn=void*(*)(void*,size_t,int,int,int,off_t);
 using FopenFn=FILE*(*)(const char*,const char*);
+using IoctlCallFn=int(*)(int,int,void*);
+using SyscallCallFn=long(*)(long,long,long,long,long,long,long);
 
 static MSHookFunctionFn gHook;
 static OpenFn gOpen;
@@ -45,6 +47,8 @@ static PreadChkFn gPread64Chk;
 static MmapFn gMmap;
 static MmapFn gMmap64;
 static FopenFn gFopen;
+static IoctlCallFn gIoctlImport;
+static SyscallCallFn gSyscallImport;
 static std::atomic<int> gInstalled{0},gGspaceFound{0};
 static std::atomic<int> hOpenAt{0},hOpen{0},hFopen{0},hPread{0},hMmap{0},hIoctl{0},hRead{0},hFread{0};
 struct HookRecord{void* addr;void* orig;void* repl;};
@@ -298,6 +302,8 @@ static void* gPreadAddr;
 static void* gFreadAddr;
 static void* gFopenAddr;
 static void* gMmapAddr;
+static void* gIoctlImportSlot;
+static void* gSyscallImportSlot;
 
 using ReadFn=ssize_t(*)(int,void*,size_t);
 using FreadFn=size_t(*)(void*,size_t,size_t,FILE*);
@@ -341,7 +347,129 @@ static bool hookLibcSymbol(MSHookFunctionFn h,const char* n,void* repl,void** or
     }
     *orig=saved;
     LOGI("LIBC_HOOK %s=YES addr=%p orig=%p",n,p,saved);
+
+
+static bool patchImportRelas(uintptr_t base,const char* moduleName,
+                             ElfW(Sym)* symtab,const char* strtab,
+                             ElfW(Rela)* relas,size_t count,const char* target,
+                             void* replacement,void** original,bool& patched){
+    if(!relas||!count)return true;
+    const size_t pageSize=(size_t)getpagesize();
+
+    for(size_t i=0;i<count;i++){
+        const ElfW(Rela)& r=relas[i];
+        const unsigned type=(unsigned)ELF64_R_TYPE(r.r_info);
+        if(type!=R_AARCH64_JUMP_SLOT && type!=R_AARCH64_GLOB_DAT)continue;
+
+        const size_t symIndex=(size_t)ELF64_R_SYM(r.r_info);
+        const char* symName=strtab+symtab[symIndex].st_name;
+        if(!symName||strcmp(symName,target)!=0)continue;
+
+        void** slot=(void**)(base+(uintptr_t)r.r_offset);
+        void* current=*slot;
+        if(current==replacement){
+            patched=true;
+            continue;
+        }
+        if(original&&!*original)*original=current;
+
+        const uintptr_t page=(uintptr_t)slot & ~(uintptr_t)(pageSize-1);
+        if(mprotect((void*)page,pageSize,PROT_READ|PROT_WRITE)!=0){
+            LOGW("GOT_MPROTECT_FAIL module=%s sym=%s errno=%d",moduleName,target,errno);
+            continue;
+        }
+        *slot=replacement;
+        (void)mprotect((void*)page,pageSize,PROT_READ);
+        patched=true;
+
+        LOGI("GOT_HOOK symbol=%s module=%s slot=%p orig=%p repl=%p",
+             target,moduleName,slot,current,replacement);
+    }
     return true;
+}
+
+static bool patchImportedSymbol(const dl_phdr_info* info,const char* target,
+                                void* replacement,void** original,void** slotStore){
+    if(!info||!target||!replacement)return false;
+    const char* moduleName=info->dlpi_name;
+    if(!moduleName||!moduleName[0])return false;
+    if(strstr(moduleName,"/libc.so")||strstr(moduleName,"/libmyhook.so"))return false;
+
+    uintptr_t base=(uintptr_t)info->dlpi_addr;
+    const ElfW(Phdr)* dynPhdr=nullptr;
+    for(int i=0;i<info->dlpi_phnum;i++){
+        if(info->dlpi_phdr[i].p_type==PT_DYNAMIC){dynPhdr=&info->dlpi_phdr[i];break;}
+    }
+    if(!dynPhdr)return false;
+
+    auto* dyn=(ElfW(Dyn)*)(base+dynPhdr->p_vaddr);
+    ElfW(Sym)* symtab=nullptr;
+    const char* strtab=nullptr;
+    ElfW(Rela)* rela=nullptr;
+    size_t relasz=0;
+    ElfW(Addr) jmprelAddr=0;
+    size_t pltrelsz=0;
+    long pltrelType=DT_RELA;
+
+    for(;dyn->d_tag!=DT_NULL;dyn++){
+        switch(dyn->d_tag){
+            case DT_SYMTAB: symtab=(ElfW(Sym)*)(base+dyn->d_un.d_ptr); break;
+            case DT_STRTAB: strtab=(const char*)(base+dyn->d_un.d_ptr); break;
+            case DT_RELA: rela=(ElfW(Rela)*)(base+dyn->d_un.d_ptr); break;
+            case DT_RELASZ: relasz=(size_t)dyn->d_un.d_val; break;
+            case DT_JMPREL: jmprelAddr=dyn->d_un.d_ptr; break;
+            case DT_PLTRELSZ: pltrelsz=(size_t)dyn->d_un.d_val; break;
+            case DT_PLTREL: pltrelType=(long)dyn->d_un.d_val; break;
+        }
+    }
+    if(!symtab||!strtab)return false;
+
+    bool patched=false;
+    if(rela&&relasz){
+        patchImportRelas(base,moduleName,symtab,strtab,rela,
+                         relasz/sizeof(ElfW(Rela)),target,replacement,original,patched);
+    }
+    if(jmprelAddr&&pltrelsz&&pltrelType==DT_RELA){
+        auto* pltrela=(ElfW(Rela)*)(base+jmprelAddr);
+        patchImportRelas(base,moduleName,symtab,strtab,pltrela,
+                         pltrelsz/sizeof(ElfW(Rela)),target,replacement,original,patched);
+    }
+    if(patched&&slotStore)*slotStore=original?*original:nullptr;
+    return patched;
+}
+
+struct ImportPatchContext{
+    const char* target;
+    void* replacement;
+    void** original;
+    void** slotStore;
+    bool patched=false;
+};
+
+static int patchImportedSymbolCallback(dl_phdr_info* info,size_t,void* opaque){
+    auto* ctx=(ImportPatchContext*)opaque;
+    if(patchImportedSymbol(info,ctx->target,ctx->replacement,ctx->original,ctx->slotStore))
+        ctx->patched=true;
+    return 0;
+}
+
+static bool hookAllImportedSymbols(const char* target,void* replacement,
+                                   void** original,void** slotStore){
+    ImportPatchContext ctx{target,replacement,original,slotStore,false};
+    dl_iterate_phdr(patchImportedSymbolCallback,&ctx);
+    return ctx.patched;
+}
+
+static int fakeIoctlImport(int fd,int request,void* arg){
+    hIoctl++;
+    return gIoctlImport?gIoctlImport(fd,request,arg):-1;
+}
+
+static long fakeSyscallImport(long number,long a1,long a2,long a3,
+                              long a4,long a5,long a6){
+    return gSyscallImport
+        ? gSyscallImport(number,a1,a2,a3,a4,a5,a6)
+        : -1;
 }
 
 static void libcScan(){
@@ -366,6 +494,13 @@ static void libcScan(){
     hookLibcSymbol(gHook,"mmap",(void*)fakeMmap,(void**)&gMmap,&gMmapAddr);
     hookLibcSymbol(gHook,"mmap64",(void*)fakeMmap64,(void**)&gMmap64,&gMmapAddr);
 
+    // ioctl/syscall are syscall stubs on arm64; use imported GOT slots rather
+    // than patching libc's SVC-containing functions.
+    bool ioctlImportHooked=hookAllImportedSymbols(
+        "ioctl",(void*)fakeIoctlImport,(void**)&gIoctlImport,&gIoctlImportSlot);
+    bool syscallImportHooked=hookAllImportedSymbols(
+        "syscall",(void*)fakeSyscallImport,(void**)&gSyscallImport,&gSyscallImportSlot);
+    LOGI("IMPORT_HOOKS ioctl=%d syscall=%d",ioctlImportHooked,syscallImportHooked);
 }
 
 static bool installHook(){
@@ -379,7 +514,8 @@ static bool installHook(){
     LOGI("HOOKS libc=%p open=%d openat=%d __open_2=%d __openat_2=%d fopen=%d fread=%d read=%d pread=%d pread64=%d mmap=%d mmap64=%d",
          gLibc,!!gOpen,!!gOpenAt,!!gOpen2,!!gOpenAt2,!!gFopen,!!gFread,!!gRead,
          !!gPread,!!gPread64,!!gMmap,!!gMmap64);
-    LOGI("DISABLED ioctl=syscall=direct-svc");
+    LOGI("IMPORT_HOOKS ioctl=%p syscall=%p; DIRECT_SVC=NOT_HOOKED",
+         gIoctlImport,gSyscallImport);
     LOGI("VA_IOUNIFORMER_PRESERVED __openat=YES __open=YES");
     return true;
 }
