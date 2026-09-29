@@ -62,7 +62,8 @@ public class MainActivity extends Activity{
         });
     }
 
-    public native String nativeMyHookTest();\n    public native boolean installHook();
+    public native String nativeMyHookTest();
+    public native boolean installHook();
     public native String scanGspace();
     public native String readEnvironment();
     public native String hookEnvironment();
