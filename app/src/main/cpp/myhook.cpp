@@ -348,7 +348,8 @@ static bool hookLibcSymbol(MSHookFunctionFn h,const char* n,void* repl,void** or
     }
     *orig=saved;
     LOGI("LIBC_HOOK %s=YES addr=%p orig=%p",n,p,saved);
-
+    return true;
+}
 
 static bool patchImportRelas64(
     uintptr_t base,const char* moduleName,
