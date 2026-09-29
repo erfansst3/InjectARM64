@@ -11,6 +11,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/syscall.h>
+#include <sys/mman.h>
 #include <pthread.h>
 #include <errno.h>
 
@@ -149,7 +150,7 @@ static int fakeOpen(const char* p,int f,...){
         if(fd>=0){gHits++;LOGI("HOOK open fd=%d",fd);return fd;}
     }
     if(!gOpen){errno=ENOSYS;return -1;}
-    if(f&O_CREAT){va_list a;va_start(a,f);mode_t m=va_arg(a,f);va_end(a);return gOpen(p,f,m);}
+    if(f&O_CREAT){va_list a;va_start(a,f);mode_t m=va_arg(a,mode_t);va_end(a);return gOpen(p,f,m);}
     return gOpen(p,f);
 }
 
@@ -179,18 +180,6 @@ static int fakeIoctl(int fd,unsigned long req,...){
     return gIoctl(fd,req,arg);
 }
 
-static long fakeSyscall(long no,...){
-    gHits++;
-    if(!gSyscall){errno=ENOSYS;return -1;}
-    va_list a;va_start(a,no);
-    long r;
-    if(no==SYS_openat){
-        int d=va_arg(a,int);const char* p=va_arg(a,const char*);int f=va_arg(a,int);
-        va_end(a);return fakeOpenAt(d,p,f);
-    }
-    va_end(a);
-    return -1;
-}
 
 static bool hookOne(MSHookFunctionFn h,const char* n,void* repl,void** orig){
     void* p=dlsym(RTLD_DEFAULT,n);
@@ -211,7 +200,6 @@ static bool installHook(){
     ok&=hookOne(h,"pread",(void*)fakePread,(void**)&gPread);
     ok&=hookOne(h,"mmap",(void*)fakeMmap,(void**)&gMmap);
     ok&=hookOne(h,"ioctl",(void*)fakeIoctl,(void**)&gIoctl);
-    hookOne(h,"syscall",(void*)fakeSyscall,(void**)&gSyscall);
     if(!ok)return false;
     gHook=h;gInstalled=1;
     LOGI("HOOKS openat=%d open=%d fopen=%d pread=%d mmap=%d ioctl=%d syscall=%d",!!gOpenAt,!!gOpen,!!gFopen,!!gPread,!!gMmap,!!gIoctl,!!gSyscall);
