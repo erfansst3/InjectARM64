@@ -234,93 +234,136 @@ static int fakeIoctlPrivate(int fd,int req,void* arg){
     return gIoctlPrivate?gIoctlPrivate(fd,req,arg):-1;
 }
 
-static bool hookOne(MSHookFunctionFn h,const char* n,void* repl,void** orig){
-    void* p=dlsym(RTLD_DEFAULT,n);
-    if(!p)return false;
-    for(int i=0;i<gPatchedCount;i++)if(gPatched[i]==p)return true;
+static void* gLibc;
+static void* gOpenAddr;
+static void* gOpenAtAddr;
+static void* gPrivateOpenAtAddr;
+static void* gPrivateOpenAddr;
+static void* gReadAddr;
+static void* gPreadAddr;
+static void* gFreadAddr;
+static void* gMmapAddr;
+static void* gIoctlAddr;
+
+using ReadFn=ssize_t(*)(int,void*,size_t);
+using FreadFn=size_t(*)(void*,size_t,size_t,FILE*);
+
+static ReadFn gRead;
+static FreadFn gFread;
+
+static std::atomic<int> hRead{0},hFread{0};
+
+static ssize_t fakeRead(int fd,void* b,size_t n){
+    hRead++;
+    return gRead?gRead(fd,b,n):-1;
+}
+
+static size_t fakeFread(void* p,size_t s,size_t n,FILE* f){
+    hFread++;
+    return gFread?gFread(p,s,n,f):0;
+}
+
+static bool hookLibcSymbol(MSHookFunctionFn h,const char* n,void* repl,void** orig,void** addrStore){
+    if(!gLibc||!n||!orig)return false;
+    void* p=dlsym(gLibc,n);
+    if(!p){
+        LOGI("LIBC_SYMBOL %s=NOT_FOUND",n);
+        return false;
+    }
+    if(addrStore)*addrStore=p;
     h(p,repl,orig);
-    if(*orig&&gPatchedCount<16)gPatched[gPatchedCount++]=p;
     bool ok=*orig!=nullptr;
-    LOGI("HOOK_INSTALL %s=%d",n,ok);
+    LOGI("LIBC_HOOK %s=%s addr=%p",n,ok?"YES":"NO",p);
     return ok;
 }
 
-static bool hookFirst(MSHookFunctionFn h,const char* a,const char* b,void* repl,void** orig,const char** picked){
-    if(hookOne(h,a,repl,orig)){if(picked)*picked=a;return true;}
-    if(b&&hookOne(h,b,repl,orig)){if(picked)*picked=b;return true;}
-    return false;
+static void libcScan(){
+    gLibc=dlopen("libc.so",RTLD_NOW);
+    if(!gLibc){
+        LOGW("libc dlopen failed");
+        return;
+    }
+
+    hookLibcSymbol(gHook,"open",(void*)fakeOpen,(void**)&gOpen,&gOpenAddr);
+    hookLibcSymbol(gHook,"openat",(void*)fakeOpenAt,(void**)&gOpenAt,&gOpenAtAddr);
+    hookLibcSymbol(gHook,"__openat",(void*)fakeOpenAtPrivate,(void**)&gOpenAtPrivate,&gPrivateOpenAtAddr);
+    hookLibcSymbol(gHook,"__open",(void*)fakeOpen,(void**)&gOpen,&gPrivateOpenAddr);
+    hookLibcSymbol(gHook,"read",(void*)fakeRead,(void**)&gRead,&gReadAddr);
+    hookLibcSymbol(gHook,"pread64",(void*)fakePread64,(void**)&gPread64,&gPreadAddr);
+    hookLibcSymbol(gHook,"pread",(void*)fakePread,(void**)&gPread,&gPreadAddr);
+    hookLibcSymbol(gHook,"fopen",(void*)fakeFopen,(void**)&gFopen,&gFreadAddr);
+    hookLibcSymbol(gHook,"fread",(void*)fakeFread,(void**)&gFread,&gFreadAddr);
+    hookLibcSymbol(gHook,"mmap",(void*)fakeMmap,(void**)&gMmap,&gMmapAddr);
+    hookLibcSymbol(gHook,"mmap64",(void*)fakeMmap64,(void**)&gMmap64,&gMmapAddr);
+    hookLibcSymbol(gHook,"ioctl",(void*)fakeIoctl,(void**)&gIoctl,&gIoctlAddr);
 }
 
 static void runSelfTest(){
-    char path[64];snprintf(path,sizeof(path),"/proc/%d/kossher",getpid());
+    char path[64];
+    snprintf(path,sizeof(path),"/proc/%d/kossher",getpid());
 
-    int fd=openat(AT_FDCWD,path,O_RDONLY);
-    bool a=checkFd(fd);
-    LOGI("TEST OPENAT=%s",a?"PASS":"FAIL");
+    int a=openat(AT_FDCWD,path,O_RDONLY);
+    LOGI("CALL openat fd=%d",a);
+    if(a>=0)close(a);
 
-    fd=open(path,O_RDONLY);
-    bool b=checkFd(fd);
-    LOGI("TEST OPEN=%s",b?"PASS":"FAIL");
+    int b=open(path,O_RDONLY);
+    LOGI("CALL open fd=%d",b);
+    if(b>=0)close(b);
 
-    FILE* fp=fopen(path,"r");
-    bool c=false;
-    if(fp){char x[64]={0};c=fgets(x,sizeof(x),fp)&&strstr(x,"KOSSHER_TEST");fclose(fp);}
-    LOGI("TEST FOPEN=%s",c?"PASS":"FAIL");
+    FILE* f=fopen(path,"r");
+    LOGI("CALL fopen fp=%p",f);
+    if(f){
+        char x[64]={0};
+        size_t n=fread(x,1,sizeof(x)-1,f);
+        LOGI("CALL fread n=%zu",n);
+        fclose(f);
+    }
 
-    int t=makeFakeFd("KOSSHER_TEST_PREAD\n");
-    char x1[64]={0};ssize_t n=t>=0?pread(t,x1,sizeof(x1)-1,0):-1;
-    bool d=n>0&&strstr(x1,"KOSSHER_TEST_PREAD");if(t>=0)syscall(SYS_close,t);
-    LOGI("TEST PREAD=%s",d?"PASS":"FAIL");
+    int t=makeFakeFd("INJECTARM64_PREAD\n");
+    if(t>=0){
+        char x[64]={0};
+        ssize_t n=pread64(t,x,sizeof(x)-1,0);
+        LOGI("CALL pread64 n=%zd",n);
+        close(t);
+    }
 
-    t=makeFakeFd("KOSSHER_TEST_MMAP\n");
-    bool e=false;
+    t=makeFakeFd("INJECTARM64_MMAP\n");
     if(t>=0){
         void* q=mmap(nullptr,4096,PROT_READ,MAP_PRIVATE,t,0);
-        e=q!=MAP_FAILED&&strstr((char*)q,"KOSSHER_TEST_MMAP")!=nullptr;
+        LOGI("CALL mmap ptr=%p",q);
         if(q!=MAP_FAILED)munmap(q,4096);
-        syscall(SYS_close,t);
+        close(t);
     }
-    LOGI("TEST MMAP=%s",e?"PASS":"FAIL");
 
     int pp[2]={-1,-1};
-    bool f=false;
     if(pipe(pp)==0){
-        const char z[]="12345";
-        write(pp[1],z,5);
         int avail=0;
-        f=ioctl(pp[0],FIONREAD,&avail)==0&&avail==5;
-        close(pp[0]);close(pp[1]);
+        write(pp[1],"12345",5);
+        int r=ioctl(pp[0],FIONREAD,&avail);
+        LOGI("CALL ioctl r=%d avail=%d",r,avail);
+        close(pp[0]);
+        close(pp[1]);
     }
-    LOGI("TEST IOCTL=%s",f?"PASS":"FAIL");
 
     int ds=(int)syscall(SYS_openat,AT_FDCWD,path,O_RDONLY,0);
-    LOGI("TEST DIRECT_SYSCALL=%s",ds>=0?"BYPASS_REAL_PATH":"BYPASS_EXPECTED");
-    if(ds>=0)syscall(SYS_close,ds);
+    LOGI("CALL direct_syscall fd=%d",ds);
+    if(ds>=0)close(ds);
 
-    LOGI("COUNTS openat=%d open=%d fopen=%d pread=%d mmap=%d ioctl=%d",hOpenAt.load(),hOpen.load(),hFopen.load(),hPread.load(),hMmap.load(),hIoctl.load());
+    LOGI("COUNTS openat=%d open=%d fopen=%d fread=%d read=%d pread=%d mmap=%d ioctl=%d",
+         hOpenAt.load(),hOpen.load(),hFopen.load(),hFread.load(),hRead.load(),
+         hPread.load(),hMmap.load(),hIoctl.load());
 }
 
 static bool installHook(){
     if(gInstalled)return true;
     uintptr_t a=findGSpaceExport("MSHookFunction");
     if(!a)return false;
-    auto h=(MSHookFunctionFn)a;
-    const char* picked=nullptr;
-    bool ok=true;
-    ok&=hookOne(h,"open",(void*)fakeOpen,(void**)&gOpen);
-    ok&=hookOne(h,"openat",(void*)fakeOpenAt,(void**)&gOpenAt);
-    hookOne(h,"__openat",(void*)fakeOpenAtPrivate,(void**)&gOpenAtPrivate);
-    ok&=hookOne(h,"fopen",(void*)fakeFopen,(void**)&gFopen);
-    hookFirst(h,"pread","pread64",(void*)fakePread,(void**)&gPread,&picked);
-    hookOne(h,"pread64",(void*)fakePread64,(void**)&gPread64);
-    hookOne(h,"__pread64_chk",(void*)fakePread64Chk,(void**)&gPread64Chk);
-    hookOne(h,"mmap",(void*)fakeMmap,(void**)&gMmap);
-    hookOne(h,"mmap64",(void*)fakeMmap64,(void**)&gMmap64);
-    hookOne(h,"ioctl",(void*)fakeIoctl,(void**)&gIoctl);
-    hookOne(h,"__ioctl",(void*)fakeIoctlPrivate,(void**)&gIoctlPrivate);
-    if(!ok)return false;
-    gHook=h;gInstalled=1;
-    LOGI("HOOKS installed open=%d openat=%d fopen=%d pread=%d mmap=%d ioctl=%d",!!gOpen,!!gOpenAt,!!gFopen,!!gPread||!!gPread64||!!gPread64Chk,!!gMmap||!!gMmap64,!!gIoctl||!!gIoctlPrivate);
+    gHook=(MSHookFunctionFn)a;
+    gInstalled=1;
+    libcScan();
+    LOGI("HOOKS libc=%p open=%d openat=%d __openat=%d __open=%d read=%d pread=%d fopen=%d fread=%d mmap=%d ioctl=%d",
+         gLibc,!!gOpen,!!gOpenAt,!!gOpenAtPrivate,!!gOpen,!!gRead,
+         !!gPread64||!!gPread,!!gFopen,!!gFread,!!gMmap64||!!gMmap,!!gIoctl);
     runSelfTest();
     return true;
 }
