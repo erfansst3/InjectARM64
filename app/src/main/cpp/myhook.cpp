@@ -52,6 +52,7 @@ static SyscallCallFn gSyscallImport;
 static std::atomic<int> gIoctlImportHooked{0},gSyscallImportHooked{0};
 static std::atomic<int> gInstalled{0},gGspaceFound{0};
 static std::atomic<int> hOpenAt{0},hOpen{0},hFopen{0},hPread{0},hMmap{0},hIoctl{0},hSyscall{0},hRead{0},hFread{0};
+static std::atomic<int> hSyscallOpenat{0};
 struct HookRecord{void* addr;void* orig;void* repl;};
 static HookRecord gHookRecords[32];static int gHookRecordCount=0;
 
@@ -501,8 +502,6 @@ static int fakeIoctlImport(int fd,int request,void* arg){
     hIoctl++;
     return gIoctlImport ? gIoctlImport(fd,request,arg) : -1;
 }
-
-static std::atomic<int> hSyscallOpenat{0};
 
 static long fakeSyscallImport(
     long number,long a1,long a2,long a3,long a4,long a5,long a6){
