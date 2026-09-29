@@ -382,9 +382,13 @@ static int fakeIoctl(int fd, unsigned long request, void* arg) {
     g_inside_hook = true;
     hIoctl++;
 
-    if (isFakeFd(fd) && request == FIONREAD) {
+        if (isFakeFd(fd) && request == FIONREAD) {
         if (arg) {
-            *reinterpret_cast<int*>(arg) = 0; // تنظیم مقدار FIONREAD برابر 0 جهت شبیه‌سازی procfs
+            // محاسبه بایت‌های باقی‌مانده واقعی در memfd
+            off_t cur = syscall(SYS_lseek, fd, 0, SEEK_CUR);
+            off_t end = syscall(SYS_lseek, fd, 0, SEEK_END);
+            syscall(SYS_lseek, fd, cur, SEEK_SET);
+            *reinterpret_cast<int*>(arg) = (int)(end > cur ? end - cur : 0);
         }
         g_inside_hook = false;
         return 0;
