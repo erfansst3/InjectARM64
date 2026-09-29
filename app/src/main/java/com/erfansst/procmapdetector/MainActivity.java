@@ -9,7 +9,7 @@ import android.widget.*;
 public class MainActivity extends Activity{
     TextView out;
 
-    static{System.loadLibrary("procmap_test");}
+    static{System.loadLibrary("myhook");System.loadLibrary("procmap_test");}
 
     @Override public void onCreate(Bundle b){
         super.onCreate(b);
@@ -21,6 +21,13 @@ public class MainActivity extends Activity{
         Button scan=new Button(this);scan.setText("SCAN GSPACE");
         Button hook=new Button(this);hook.setText("HOOK");
         Button read=new Button(this);read.setText("READ");
+        Button myhook=new Button(this);myhook.setText("MYHOOK BUFFER TEST");
+        root.addView(myhook,new LinearLayout.LayoutParams(-1,-2));
+        myhook.setOnClickListener(v->new Thread(()->{
+            String s=nativeMyHookTest();
+            runOnUiThread(()->out.setText(s));
+        }).start());
+
         Button copy=new Button(this);copy.setText("COPY");
         bar.addView(scan,new LinearLayout.LayoutParams(0,-2,1.5f));
         bar.addView(hook,new LinearLayout.LayoutParams(0,-2,1));
@@ -55,7 +62,7 @@ public class MainActivity extends Activity{
         });
     }
 
-    public native boolean installHook();
+    public native String nativeMyHookTest();\n    public native boolean installHook();
     public native String scanGspace();
     public native String readEnvironment();
     public native String hookEnvironment();
