@@ -208,13 +208,13 @@ static int fakeOpenAtPrivate(int d,const char* p,int f,mode_t m){
     return gOpenAtPrivate?gOpenAtPrivate(d,p,f,m):-1;
 }
 
-static int fakeOpenAt2(int d,const char* p,int f){
+static int fakeOpenAt2(int d,const char* p,int f,mode_t m){
     if(isKossherPath(p)&&(f&O_ACCMODE)!=O_WRONLY){
         hOpenAt++;
         int fd=makeFakeFd(marker());
         if(fd>=0){LOGI("HOOK __openat_2 %s pid=%d fd=%d",p,getpid(),fd);return fd;}
     }
-    return gOpenAt2?gOpenAt2(d,p,f):-1;
+    return gOpenAt2?gOpenAt2(d,p,f,m):-1;
 }
 
 static int fakeOpen2(const char* p,int f){
