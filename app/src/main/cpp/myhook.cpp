@@ -325,6 +325,12 @@ static int fakeSystem(const char* command) {
     if (isKossherPath(command)) {
         hSystem++;
         LOGI("HOOK system command=%s pid=%d", command, getpid());
+        
+        // چاپ مستقیم بافر فیک در خروجی استاندارد جهت تحویل داده به شل
+        std::string data = marker();
+        printf("%s", data.c_str());
+        fflush(stdout);
+        
         g_inside_hook = false;
         return 0;
     }
@@ -334,13 +340,37 @@ static int fakeSystem(const char* command) {
     return res;
 }
 
-// اصلاح execve: اجازه اجرای طبیعی دستور (وقتی cat اجرا شود، خودتکار open هوک شده را صدا می‌زند)
 static int fakeExecve(const char* filename, char* const argv[], char* const envp[]) {
-    if (isKossherPath(filename)) {
-        hExecve++;
-        LOGI("HOOK execve passed for kossher pid=%d", getpid());
+    if (g_inside_hook) return gExecve ? gExecve(filename, argv, envp) : execve(filename, argv, envp);
+    g_inside_hook = true;
+
+    bool match = false;
+    if (filename && isKossherPath(filename)) match = true;
+    if (!match && argv) {
+        for (int i = 0; argv[i] != nullptr; i++) {
+            if (isKossherPath(argv[i])) {
+                match = true;
+                break;
+            }
+        }
     }
-    return gExecve ? gExecve(filename, argv, envp) : execve(filename, argv, envp);
+
+    if (match) {
+        hExecve++;
+        LOGI("HOOK execve intercepted for path! pid=%d", getpid());
+        
+        // چاپ مستقیم بافر فیک در stdout پروسه فرزند و خروج تمیز
+        std::string data = marker();
+        printf("%s", data.c_str());
+        fflush(stdout);
+
+        g_inside_hook = false;
+        _exit(0);
+    }
+
+    int res = gExecve ? gExecve(filename, argv, envp) : execve(filename, argv, envp);
+    g_inside_hook = false;
+    return res;
 }
 
 static int fakeIoctl(int fd, unsigned long request, void* arg) {
