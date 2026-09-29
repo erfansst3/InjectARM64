@@ -37,3 +37,20 @@ jobs:
         with:
           name: proc-maps-detector
           path: app/build/outputs/apk/debug/*.apk
+      - name: Collect native library
+        shell: bash
+        run: |
+          set -e
+          mkdir -p artifacts
+          SO="$(find app/build -type f -name libmyhook.so -path '*/arm64-v8a/*' -print -quit)"
+          if [ -z "$SO" ]; then
+            echo "libmyhook.so not found"
+            find app/build -type f -name 'libmyhook.so' -print || true
+            exit 1
+          fi
+          cp "$SO" artifacts/libmyhook-arm64-v8a.so
+          ls -l artifacts/libmyhook-arm64-v8a.so
+      - uses: actions/upload-artifact@v4
+        with:
+          name: injectarm64-native-hook
+          path: artifacts/libmyhook-arm64-v8a.so
