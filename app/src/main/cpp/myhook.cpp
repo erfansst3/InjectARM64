@@ -250,6 +250,7 @@ static void* gPrivateOpenAddr;
 static void* gReadAddr;
 static void* gPreadAddr;
 static void* gFreadAddr;
+static void* gFopenAddr;
 static void* gMmapAddr;
 static void* gIoctlAddr;
 
@@ -300,7 +301,7 @@ static void libcScan(){
     hookLibcSymbol(gHook,"read",(void*)fakeRead,(void**)&gRead,&gReadAddr);
     hookLibcSymbol(gHook,"pread64",(void*)fakePread64,(void**)&gPread64,&gPreadAddr);
     hookLibcSymbol(gHook,"pread",(void*)fakePread,(void**)&gPread,&gPreadAddr);
-    hookLibcSymbol(gHook,"fopen",(void*)fakeFopen,(void**)&gFopen,&gFreadAddr);
+    hookLibcSymbol(gHook,"fopen",(void*)fakeFopen,(void**)&gFopen,&gFopenAddr);
     hookLibcSymbol(gHook,"fread",(void*)fakeFread,(void**)&gFread,&gFreadAddr);
     hookLibcSymbol(gHook,"mmap",(void*)fakeMmap,(void**)&gMmap,&gMmapAddr);
     hookLibcSymbol(gHook,"mmap64",(void*)fakeMmap64,(void**)&gMmap64,&gMmapAddr);
@@ -311,58 +312,82 @@ static void runSelfTest(){
     char path[64];
     snprintf(path,sizeof(path),"/proc/%d/kossher",getpid());
 
-    int a=openat(AT_FDCWD,path,O_RDONLY);
-    LOGI("CALL openat fd=%d",a);
-    if(a>=0)close(a);
+    if(gOpenAddr){
+        auto fn=(OpenFn)gOpenAddr;
+        int fd=fn(path,O_RDONLY);
+        LOGI("TEST_ADDR open fd=%d hit=%d",fd,hOpen.load());
+        if(fd>=0)close(fd);
+    }else LOGI("TEST_ADDR open=NO_ADDR");
 
-    int b=open(path,O_RDONLY);
-    LOGI("CALL open fd=%d",b);
-    if(b>=0)close(b);
+    if(gOpenAtAddr){
+        auto fn=(OpenAtFn)gOpenAtAddr;
+        int fd=fn(AT_FDCWD,path,O_RDONLY);
+        LOGI("TEST_ADDR openat fd=%d hit=%d",fd,hOpenAt.load());
+        if(fd>=0)close(fd);
+    }else LOGI("TEST_ADDR openat=NO_ADDR");
 
-    FILE* f=fopen(path,"r");
-    LOGI("CALL fopen fp=%p",f);
-    if(f){
-        char x[64]={0};
-        size_t n=fread(x,1,sizeof(x)-1,f);
-        LOGI("CALL fread n=%zu",n);
-        fclose(f);
+    if(gPrivateOpenAtAddr){
+        auto fn=(OpenAt4Fn)gPrivateOpenAtAddr;
+        int fd=fn(AT_FDCWD,path,O_RDONLY,0);
+        LOGI("TEST_ADDR __openat fd=%d hit=%d",fd,hOpenAt.load());
+        if(fd>=0)close(fd);
     }
 
-    int t=makeFakeFd("INJECTARM64_PREAD\n");
-    if(t>=0){
-        char x[64]={0};
-        ssize_t n=pread64(t,x,sizeof(x)-1,0);
-        LOGI("CALL pread64 n=%zd",n);
-        close(t);
-    }
+    if(gFopenAddr){
+        auto fn=(FopenFn)gFopenAddr;
+        FILE* fp=fn(path,"r");
+        LOGI("TEST_ADDR fopen fp=%p hit=%d",fp,hFopen.load());
+        if(fp){
+            char x[64]={0};
+            size_t n=fread(x,1,sizeof(x)-1,fp);
+            LOGI("TEST_ADDR fread n=%zu hit=%d",n,hFread.load());
+            fclose(fp);
+        }
+    }else LOGI("TEST_ADDR fopen=NO_ADDR");
 
-    t=makeFakeFd("INJECTARM64_MMAP\n");
-    if(t>=0){
-        void* q=mmap(nullptr,4096,PROT_READ,MAP_PRIVATE,t,0);
-        LOGI("CALL mmap ptr=%p",q);
-        if(q!=MAP_FAILED)munmap(q,4096);
-        close(t);
-    }
+    if(gPreadAddr){
+        int t=makeFakeFd("INJECTARM64_PREAD\n");
+        if(t>=0){
+            char x[64]={0};
+            auto fn=(PreadFn)gPreadAddr;
+            ssize_t n=fn(t,x,sizeof(x)-1,0);
+            LOGI("TEST_ADDR pread n=%zd hit=%d",n,hPread.load());
+            close(t);
+        }
+    }else LOGI("TEST_ADDR pread=NO_ADDR");
 
-    int pp[2]={-1,-1};
-    if(pipe(pp)==0){
-        int avail=0;
-        write(pp[1],"12345",5);
-        int r=ioctl(pp[0],FIONREAD,&avail);
-        LOGI("CALL ioctl r=%d avail=%d",r,avail);
-        close(pp[0]);
-        close(pp[1]);
-    }
+    if(gMmapAddr){
+        int t=makeFakeFd("INJECTARM64_MMAP\n");
+        if(t>=0){
+            auto fn=(MmapFn)gMmapAddr;
+            void* q=fn(nullptr,4096,PROT_READ,MAP_PRIVATE,t,0);
+            LOGI("TEST_ADDR mmap ptr=%p hit=%d",q,hMmap.load());
+            if(q!=MAP_FAILED)munmap(q,4096);
+            close(t);
+        }
+    }else LOGI("TEST_ADDR mmap=NO_ADDR");
+
+    if(gIoctlAddr){
+        int pp[2]={-1,-1};
+        if(pipe(pp)==0){
+            int avail=0;
+            write(pp[1],"12345",5);
+            auto fn=(IoctlFn)gIoctlAddr;
+            int r=fn(pp[0],FIONREAD,&avail);
+            LOGI("TEST_ADDR ioctl r=%d avail=%d hit=%d",r,avail,hIoctl.load());
+            close(pp[0]);
+            close(pp[1]);
+        }
+    }else LOGI("TEST_ADDR ioctl=NO_ADDR");
 
     int ds=(int)syscall(SYS_openat,AT_FDCWD,path,O_RDONLY,0);
-    LOGI("CALL direct_syscall fd=%d",ds);
+    LOGI("TEST_ADDR direct_syscall fd=%d",ds);
     if(ds>=0)close(ds);
 
     LOGI("COUNTS openat=%d open=%d fopen=%d fread=%d read=%d pread=%d mmap=%d ioctl=%d",
          hOpenAt.load(),hOpen.load(),hFopen.load(),hFread.load(),hRead.load(),
          hPread.load(),hMmap.load(),hIoctl.load());
 }
-
 static bool installHook(){
     if(gInstalled)return true;
     uintptr_t a=findGSpaceExport("MSHookFunction");
