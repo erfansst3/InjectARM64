@@ -72,7 +72,8 @@ ldp q24,q25,[sp,#640]
 ldp q26,q27,[sp,#672]
 ldp q28,q29,[sp,#704]
 ldp q30,q31,[sp,#736]
-ldr x16,=\slot
+adrp x16,:got:\slot
+ldr x16,[x16,:got_lo12:\slot]
 ldr x16,[x16]
 add sp,sp,#768
 br x16
