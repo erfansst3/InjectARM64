@@ -31,7 +31,7 @@ using OpenAt2Fn=int(*)(int,const char*,int);
 using PreadChkFn=ssize_t(*)(int,void*,size_t,off_t,size_t);
 using MmapFn=void*(*)(void*,size_t,int,int,int,off_t);
 using FopenFn=FILE*(*)(const char*,const char*);
-using IoctlCallFn=int(*)(int,int,void*);
+using IoctlCallFn=int(*)(int,unsigned long,void*);
 using SyscallCallFn=long(*)(long,long,long,long,long,long,long);
 
 static MSHookFunctionFn gHook;
@@ -414,6 +414,11 @@ static bool patchImportedSymbol64(
     if(strstr(moduleName,"/libc.so") || strstr(moduleName,"/libmyhook.so"))
         return false;
 
+    // Do not rewrite framework/APEX/vendor system binaries. Patch only
+    // application-side /data modules, including GSpace's own native libs.
+    if(strncmp(moduleName,"/data/",6)!=0 && strcmp(moduleName,"[main]")!=0)
+        return false;
+
     const uintptr_t base=(uintptr_t)info->dlpi_addr;
     const ElfW(Phdr)* dynPhdr=nullptr;
 
@@ -498,7 +503,7 @@ static bool hookAllImportedSymbols(
     return ctx.patched;
 }
 
-static int fakeIoctlImport(int fd,int request,void* arg){
+static int fakeIoctlImport(int fd,unsigned long request,void* arg){
     hIoctl++;
     return gIoctlImport ? gIoctlImport(fd,request,arg) : -1;
 }
@@ -581,10 +586,15 @@ static void libcScan(){
 
     // ioctl/syscall are syscall stubs on arm64; use imported GOT slots rather
     // than patching libc's SVC-containing functions.
-    bool ioctlImportHooked=hookAllImportedSymbols(
-        "ioctl",(void*)fakeIoctlImport,(void**)&gIoctlImport);
-    bool syscallImportHooked=hookAllImportedSymbols(
-        "syscall",(void*)fakeSyscallImport,(void**)&gSyscallImport);
+    void* libcIoctl=dlsym(gLibc,"ioctl");
+    void* libcSyscall=dlsym(gLibc,"syscall");
+    if(libcIoctl) gIoctlImport=(IoctlCallFn)libcIoctl;
+    if(libcSyscall) gSyscallImport=(SyscallCallFn)libcSyscall;
+
+    bool ioctlImportHooked=libcIoctl && hookAllImportedSymbols(
+        "ioctl",(void*)fakeIoctlImport,nullptr);
+    bool syscallImportHooked=libcSyscall && hookAllImportedSymbols(
+        "syscall",(void*)fakeSyscallImport,nullptr);
     gIoctlImportHooked=ioctlImportHooked?1:0;
     gSyscallImportHooked=syscallImportHooked?1:0;
     LOGI("IMPORT_HOOKS ioctl=%d syscall=%d",ioctlImportHooked,syscallImportHooked);
