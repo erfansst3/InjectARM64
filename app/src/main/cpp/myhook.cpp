@@ -1,4 +1,3 @@
-#include <jni.h>
 #include <android/log.h>
 #include <dlfcn.h>
 #include <link.h>
@@ -328,24 +327,4 @@ static void startWorker() {
 __attribute__((constructor))
 static void onLibraryLoaded() {
     startWorker();
-}
-
-static std::string statusString() {
-    std::string out;
-    out += "PID=" + std::to_string(getpid()) + "\n";
-    out += "GSPACE=" + std::string(gGspaceFound.load() ? "FOUND" : "NOT_FOUND") + "\n";
-    out += "MSHookFunction=" +
-           std::string(gMSHookFunction ? "FOUND" : "NOT_FOUND") + "\n";
-    out += "HOOK=" +
-           std::string(gInstalled.load() ? "INSTALLED" : "NOT_INSTALLED") + "\n";
-    out += "KOSSHER_HITS=" + std::to_string(gHits.load()) + "\n";
-    return out;
-}
-
-extern "C" JNIEXPORT jstring JNICALL
-Java_com_erfansst_procmapdetector_MainActivity_nativeMyHookTest(
-        JNIEnv* env, jobject) {
-    installHook();
-    const std::string s = statusString();
-    return env->NewStringUTF(s.c_str());
 }
