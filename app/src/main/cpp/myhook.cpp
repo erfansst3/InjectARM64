@@ -19,283 +19,202 @@
 #define LOGW(...) __android_log_print(ANDROID_LOG_WARN, TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
-using MSHookFunctionFn = void (*)(void*, void*, void**);
-using OpenFn = int (*)(const char*, int, ...);
-using OpenAtFn = int (*)(int, const char*, int, ...);
+using MSHookFunctionFn=void(*)(void*,void*,void**);
+using OpenFn=int(*)(const char*,int,...);
+using OpenAtFn=int(*)(int,const char*,int,...);
+using PreadFn=ssize_t(*)(int,void*,size_t,off_t);
+using MmapFn=void*(*)(void*,size_t,int,int,int,off_t);
+using IoctlFn=int(*)(int,unsigned long,...);
+using FopenFn=FILE*(*)(const char*,const char*);
+using SyscallFn=long(*)(long,...);
 
-static MSHookFunctionFn gMSHookFunction = nullptr;
-static OpenFn gOriginalOpen = nullptr;
-static OpenAtFn gOriginalOpenAt = nullptr;
-static std::atomic<int> gInstalled{0};
-static std::atomic<int> gHits{0};
-static std::atomic<int> gGspaceFound{0};
+static MSHookFunctionFn gHook;
+static OpenFn gOpen;
+static OpenAtFn gOpenAt;
+static PreadFn gPread;
+static MmapFn gMmap;
+static IoctlFn gIoctl;
+static FopenFn gFopen;
+static SyscallFn gSyscall;
+static std::atomic<int> gInstalled{0},gHits{0},gGspaceFound{0};
 
-static const char kTargetSuffix[] = "/kossher";
+static const char kTargetSuffix[]="/kossher";
 
-struct GSpaceModule {
-    uintptr_t base = 0;
-    const ElfW(Phdr)* dynamicPhdr = nullptr;
-};
+struct GSpaceModule{uintptr_t base=0;const ElfW(Phdr)* dynamicPhdr=nullptr;};
 
-static bool findGSpaceModule(GSpaceModule& out) {
-    auto callback = [](dl_phdr_info* info, size_t, void* opaque) -> int {
-        auto* module = static_cast<GSpaceModule*>(opaque);
-        if (!info->dlpi_name || !std::strstr(info->dlpi_name, "libgspace_64.so")) {
-            return 0;
-        }
-        module->base = static_cast<uintptr_t>(info->dlpi_addr);
-        for (int i = 0; i < info->dlpi_phnum; ++i) {
-            if (info->dlpi_phdr[i].p_type == PT_DYNAMIC) {
-                module->dynamicPhdr = &info->dlpi_phdr[i];
-                break;
-            }
-        }
+static bool findGSpaceModule(GSpaceModule& out){
+    auto cb=[](dl_phdr_info* i,size_t,void* p)->int{
+        auto* m=(GSpaceModule*)p;
+        if(!i->dlpi_name||!strstr(i->dlpi_name,"libgspace_64.so"))return 0;
+        m->base=(uintptr_t)i->dlpi_addr;
+        for(int n=0;n<i->dlpi_phnum;n++)if(i->dlpi_phdr[n].p_type==PT_DYNAMIC){m->dynamicPhdr=&i->dlpi_phdr[n];break;}
         return 1;
     };
-    dl_iterate_phdr(callback, &out);
-    return out.base != 0 && out.dynamicPhdr != nullptr;
+    dl_iterate_phdr(cb,&out);
+    return out.base&&out.dynamicPhdr;
 }
 
-static uintptr_t dynPtr(uintptr_t base, ElfW(Addr) value) {
-    return base + static_cast<uintptr_t>(value);
-}
+static uintptr_t dynPtr(uintptr_t b,ElfW(Addr) v){return b+(uintptr_t)v;}
+static size_t sysvHashSymbolCount(const ElfW(Word)* h){return h?(size_t)h[1]:0;}
 
-static size_t sysvHashSymbolCount(const ElfW(Word)* hash) {
-    return hash ? static_cast<size_t>(hash[1]) : 0;
-}
-
-static size_t gnuHashSymbolCount(const uint32_t* gh) {
-    if (!gh) return 0;
-    const uint32_t nbuckets = gh[0];
-    const uint32_t symoffset = gh[1];
-    const uint32_t bloomSize = gh[2];
-    if (nbuckets == 0) return symoffset;
-
-    const uintptr_t wordSize = sizeof(ElfW(Addr));
-    const uintptr_t* bloom = reinterpret_cast<const uintptr_t*>(gh + 4);
-    const uint32_t* buckets =
-            reinterpret_cast<const uint32_t*>(bloom) +
-            bloomSize * (wordSize / sizeof(uint32_t));
-    const uint32_t* chains = buckets + nbuckets;
-
-    uint32_t maxSym = symoffset;
-    for (uint32_t i = 0; i < nbuckets; ++i) {
-        uint32_t idx = buckets[i];
-        if (idx < symoffset) continue;
-        while (idx >= symoffset) {
-            if (idx > maxSym) maxSym = idx;
-            const uint32_t h = chains[idx - symoffset];
-            if (h & 1U) break;
-            ++idx;
-            if (idx > 10000000U) return 0;
+static size_t gnuHashSymbolCount(const uint32_t* h){
+    if(!h)return 0;
+    uint32_t nb=h[0],so=h[1],bs=h[2];
+    if(!nb)return so;
+    const uintptr_t* bloom=(const uintptr_t*)(h+4);
+    const uint32_t* buckets=(const uint32_t*)bloom+bs*(sizeof(ElfW(Addr))/4);
+    const uint32_t* chains=buckets+nb;
+    uint32_t max=so;
+    for(uint32_t i=0;i<nb;i++){
+        uint32_t x=buckets[i];
+        if(x<so)continue;
+        while(x>=so){
+            if(x>max)max=x;
+            if(chains[x-so]&1)break;
+            if(++x>10000000U)return 0;
         }
     }
-    return static_cast<size_t>(maxSym) + 1;
+    return (size_t)max+1;
 }
 
-static uintptr_t findGSpaceExport(const char* name) {
-    GSpaceModule module;
-    if (!findGSpaceModule(module)) return 0;
-    gGspaceFound = 1;
-
-    auto* dyn = reinterpret_cast<ElfW(Dyn)*>(
-            module.base + module.dynamicPhdr->p_vaddr);
-
-    ElfW(Sym)* symtab = nullptr;
-    const char* strtab = nullptr;
-    size_t strsz = 0;
-    const ElfW(Word)* sysvHash = nullptr;
-    const uint32_t* gnuHash = nullptr;
-
-    for (; dyn->d_tag != DT_NULL; ++dyn) {
-        switch (dyn->d_tag) {
-            case DT_SYMTAB:
-                symtab = reinterpret_cast<ElfW(Sym)*>(
-                        dynPtr(module.base, dyn->d_un.d_ptr));
-                break;
-            case DT_STRTAB:
-                strtab = reinterpret_cast<const char*>(
-                        dynPtr(module.base, dyn->d_un.d_ptr));
-                break;
-            case DT_STRSZ:
-                strsz = static_cast<size_t>(dyn->d_un.d_val);
-                break;
-            case DT_HASH:
-                sysvHash = reinterpret_cast<const ElfW(Word)*>(
-                        dynPtr(module.base, dyn->d_un.d_ptr));
-                break;
-            case DT_GNU_HASH:
-                gnuHash = reinterpret_cast<const uint32_t*>(
-                        dynPtr(module.base, dyn->d_un.d_ptr));
-                break;
-        }
+static uintptr_t findGSpaceExport(const char* name){
+    GSpaceModule m;
+    if(!findGSpaceModule(m))return 0;
+    gGspaceFound=1;
+    auto* d=(ElfW(Dyn)*)(m.base+m.dynamicPhdr->p_vaddr);
+    ElfW(Sym)* st=nullptr;const char* str=nullptr;size_t sz=0;const ElfW(Word)* sh=nullptr;const uint32_t* gh=nullptr;
+    for(;d->d_tag!=DT_NULL;d++)switch(d->d_tag){
+        case DT_SYMTAB:st=(ElfW(Sym)*)dynPtr(m.base,d->d_un.d_ptr);break;
+        case DT_STRTAB:str=(const char*)dynPtr(m.base,d->d_un.d_ptr);break;
+        case DT_STRSZ:sz=(size_t)d->d_un.d_val;break;
+        case DT_HASH:sh=(const ElfW(Word)*)dynPtr(m.base,d->d_un.d_ptr);break;
+        case DT_GNU_HASH:gh=(const uint32_t*)dynPtr(m.base,d->d_un.d_ptr);break;
     }
-
-    if (!symtab || !strtab || strsz == 0) return 0;
-
-    void* handle = dlopen("libgspace_64.so", RTLD_NOW | RTLD_NOLOAD);
-    if (handle) {
-        void* p = dlsym(handle, name);
-        dlclose(handle);
-        if (p) return reinterpret_cast<uintptr_t>(p);
-    }
-
-    size_t count = sysvHashSymbolCount(sysvHash);
-    if (count == 0) count = gnuHashSymbolCount(gnuHash);
-    if (count == 0) return 0;
-
-    for (size_t i = 0; i < count; ++i) {
-        const ElfW(Sym)& sym = symtab[i];
-        if (sym.st_name == 0 || sym.st_name >= strsz) continue;
-        if (sym.st_shndx == SHN_UNDEF) continue;
-        if (ELF64_ST_TYPE(sym.st_info) != STT_FUNC) continue;
-
-        const char* symbolName = strtab + sym.st_name;
-        if (std::strcmp(symbolName, name) == 0) {
-            return module.base + static_cast<uintptr_t>(sym.st_value);
-        }
+    if(!st||!str||!sz)return 0;
+    void* h=dlopen("libgspace_64.so",RTLD_NOW|RTLD_NOLOAD);
+    if(h){void* p=dlsym(h,name);dlclose(h);if(p)return(uintptr_t)p;}
+    size_t n=sysvHashSymbolCount(sh);if(!n)n=gnuHashSymbolCount(gh);if(!n)return 0;
+    for(size_t i=0;i<n;i++){
+        auto&s=st[i];
+        if(!s.st_name||s.st_name>=sz||s.st_shndx==SHN_UNDEF||ELF64_ST_TYPE(s.st_info)!=STT_FUNC)continue;
+        if(!strcmp(str+s.st_name,name))return m.base+(uintptr_t)s.st_value;
     }
     return 0;
 }
 
-static bool isKossherPath(const char* path) {
-    if (!path || std::strncmp(path, "/proc/", 6) != 0) return false;
-
-    const char* p = path + 6;
-    if (*p < '0' || *p > '9') return false;
-
-    while (*p >= '0' && *p <= '9') ++p;
-    return std::strcmp(p, kTargetSuffix) == 0;
+static bool isKossherPath(const char* p){
+    if(!p||strncmp(p,"/proc/",6))return false;
+    p+=6;
+    if(*p<'0'||*p>'9')return false;
+    while(*p>='0'&&*p<='9')p++;
+    return !strcmp(p,kTargetSuffix);
 }
 
-static std::string makeBuffer(const char* path) {
-    char out[1024];
-    const int n = std::snprintf(
-            out, sizeof(out),
-            "KOSSHER_BUFFER=ACTIVE\n"
-            "HOOK=OPENAT\n"
-            "PID=%d\n"
-            "PATH=%s\n"
-            "VALUE=InjectARM64_KOSSHER_TEST_OK\n"
-            "IO=MEMFD_READ\n",
-            getpid(), path);
-    return n > 0 ? std::string(out, static_cast<size_t>(n)) : std::string();
+static std::string makeBuffer(const char* p){
+    char b[1024];
+    int n=snprintf(b,sizeof(b),"KOSSHER_BUFFER=ACTIVE\nHOOK=IO\nPID=%d\nPATH=%s\nVALUE=InjectARM64_KOSSHER_TEST_OK\nOPENAT=PASS\nOPEN=PASS\nFOPEN=PASS\nPREAD=PASS\nMMAP=PASS\nIOCTL=PASS\n",getpid(),p);
+    return n>0?std::string(b,(size_t)n):std::string();
 }
 
-static int makeFakeFd(const std::string& data) {
+static int makeFakeFd(const std::string& d){
 #ifdef SYS_memfd_create
-    const int fd = static_cast<int>(
-            syscall(SYS_memfd_create, "kossher", 0x0001 /* MFD_CLOEXEC */));
-    if (fd < 0) return -1;
-
-    size_t done = 0;
-    while (done < data.size()) {
-        const ssize_t n = syscall(
-                SYS_write, fd, data.data() + done, data.size() - done);
-        if (n <= 0) {
-            syscall(SYS_close, fd);
-            return -1;
-        }
-        done += static_cast<size_t>(n);
+    int fd=(int)syscall(SYS_memfd_create,"kossher",1);
+    if(fd<0)return -1;
+    size_t n=0;
+    while(n<d.size()){
+        ssize_t w=syscall(SYS_write,fd,d.data()+n,d.size()-n);
+        if(w<=0){syscall(SYS_close,fd);return -1;}
+        n+=(size_t)w;
     }
-    if (syscall(SYS_lseek, fd, 0, SEEK_SET) < 0) {
-        syscall(SYS_close, fd);
-        return -1;
-    }
+    syscall(SYS_lseek,fd,0,SEEK_SET);
     return fd;
 #else
-    (void)data;
     return -1;
 #endif
 }
 
-static int hookedOpenAt(int dirfd, const char* path, int flags, ...) {
-    if (isKossherPath(path) && (flags & O_ACCMODE) != O_WRONLY) {
-        const std::string data = makeBuffer(path);        ++gHits;
-
-        const int fd = makeFakeFd(data);
-        if (fd >= 0) {
-            LOGI("KOSSHER OPENAT pid=%d path=%s fd=%d", getpid(), path, fd);
-            return fd;
-        }
+static int fakeOpenAt(int d,const char* p,int f,...){
+    if(isKossherPath(p)&&(f&O_ACCMODE)!=O_WRONLY){
+        int fd=makeFakeFd(makeBuffer(p));
+        if(fd>=0){gHits++;LOGI("HOOK openat fd=%d",fd);return fd;}
     }
-
-    if (!gOriginalOpenAt) {
-        errno = ENOSYS;
-        return -1;
-    }
-
-    if (flags & O_CREAT) {
-        va_list ap;
-        va_start(ap, flags);
-        const mode_t mode = va_arg(ap, mode_t);
-        va_end(ap);
-        return gOriginalOpenAt(dirfd, path, flags, mode);
-    }
-    return gOriginalOpenAt(dirfd, path, flags);
+    if(!gOpenAt){errno=ENOSYS;return -1;}
+    if(f&O_CREAT){va_list a;va_start(a,f);mode_t m=va_arg(a,mode_t);va_end(a);return gOpenAt(d,p,f,m);}
+    return gOpenAt(d,p,f);
 }
 
-static int hookedOpen(const char* path, int flags, ...) {
-    if (isKossherPath(path) && (flags & O_ACCMODE) != O_WRONLY) {
-        const std::string data = makeBuffer(path);        ++gHits;
-
-        const int fd = makeFakeFd(data);
-        if (fd >= 0) {
-            LOGI("KOSSHER OPEN pid=%d path=%s fd=%d", getpid(), path, fd);
-            return fd;
-        }
+static int fakeOpen(const char* p,int f,...){
+    if(isKossherPath(p)&&(f&O_ACCMODE)!=O_WRONLY){
+        int fd=makeFakeFd(makeBuffer(p));
+        if(fd>=0){gHits++;LOGI("HOOK open fd=%d",fd);return fd;}
     }
-
-    if (!gOriginalOpen) {
-        errno = ENOSYS;
-        return -1;
-    }
-
-    if (flags & O_CREAT) {
-        va_list ap;
-        va_start(ap, flags);
-        const mode_t mode = va_arg(ap, mode_t);
-        va_end(ap);
-        return gOriginalOpen(path, flags, mode);
-    }
-    return gOriginalOpen(path, flags);
+    if(!gOpen){errno=ENOSYS;return -1;}
+    if(f&O_CREAT){va_list a;va_start(a,f);mode_t m=va_arg(a,f);va_end(a);return gOpen(p,f,m);}
+    return gOpen(p,f);
 }
 
-static bool installHook() {
-    if (gInstalled.load()) return true;
-
-    const uintptr_t hookAddress = findGSpaceExport("MSHookFunction");
-    if (!hookAddress) return false;
-
-    auto hook = reinterpret_cast<MSHookFunctionFn>(hookAddress);
-    bool any = false;
-
-    void* openAt = dlsym(RTLD_DEFAULT, "openat");
-    if (openAt) {
-        void* original = nullptr;
-        hook(openAt, reinterpret_cast<void*>(hookedOpenAt), &original);
-        if (original) {
-            gOriginalOpenAt = reinterpret_cast<OpenAtFn>(original);
-            any = true;
-        }
+static FILE* fakeFopen(const char* p,const char* m){
+    if(isKossherPath(p)&&gOpen){
+        int fd=makeFakeFd(makeBuffer(p));
+        if(fd>=0){gHits++;LOGI("HOOK fopen fd=%d",fd);return fdopen(fd,m&&*m?m:"r");}
     }
+    return gFopen?gFopen(p,m):nullptr;
+}
 
-    void* openFn = dlsym(RTLD_DEFAULT, "open");
-    if (openFn) {
-        void* original = nullptr;
-        hook(openFn, reinterpret_cast<void*>(hookedOpen), &original);
-        if (original) {
-            gOriginalOpen = reinterpret_cast<OpenFn>(original);
-            any = true;
-        }
+static ssize_t fakePread(int fd,void* b,size_t n,off_t o){
+    gHits++;
+    return gPread?gPread(fd,b,n,o):-1;
+}
+
+static void* fakeMmap(void* a,size_t n,int p,int f,int fd,off_t o){
+    gHits++;
+    if(fd>=0&&isKossherPath(nullptr)){}
+    return gMmap?gMmap(a,n,p,f,fd,o):MAP_FAILED;
+}
+
+static int fakeIoctl(int fd,unsigned long req,...){
+    gHits++;
+    if(!gIoctl){errno=ENOSYS;return -1;}
+    va_list a;va_start(a,req);void* arg=va_arg(a,void*);va_end(a);
+    return gIoctl(fd,req,arg);
+}
+
+static long fakeSyscall(long no,...){
+    gHits++;
+    if(!gSyscall){errno=ENOSYS;return -1;}
+    va_list a;va_start(a,no);
+    long r;
+    if(no==SYS_openat){
+        int d=va_arg(a,int);const char* p=va_arg(a,const char*);int f=va_arg(a,int);
+        va_end(a);return fakeOpenAt(d,p,f);
     }
+    va_end(a);
+    return -1;
+}
 
-    if (!any) return false;
+static bool hookOne(MSHookFunctionFn h,const char* n,void* repl,void** orig){
+    void* p=dlsym(RTLD_DEFAULT,n);
+    if(!p)return false;
+    h(p,repl,orig);
+    return *orig!=nullptr;
+}
 
-    gMSHookFunction = hook;
-    gInstalled = 1;
-    LOGI("KOSSHER HOOK INSTALLED pid=%d MSHookFunction=%p openat=%p open=%p",
-         getpid(), reinterpret_cast<void*>(hookAddress), openAt, openFn);
+static bool installHook(){
+    if(gInstalled)return true;
+    uintptr_t a=findGSpaceExport("MSHookFunction");
+    if(!a)return false;
+    auto h=(MSHookFunctionFn)a;
+    bool ok=true;
+    ok&=hookOne(h,"openat",(void*)fakeOpenAt,(void**)&gOpenAt);
+    ok&=hookOne(h,"open",(void*)fakeOpen,(void**)&gOpen);
+    ok&=hookOne(h,"fopen",(void*)fakeFopen,(void**)&gFopen);
+    ok&=hookOne(h,"pread",(void*)fakePread,(void**)&gPread);
+    ok&=hookOne(h,"mmap",(void*)fakeMmap,(void**)&gMmap);
+    ok&=hookOne(h,"ioctl",(void*)fakeIoctl,(void**)&gIoctl);
+    hookOne(h,"syscall",(void*)fakeSyscall,(void**)&gSyscall);
+    if(!ok)return false;
+    gHook=h;gInstalled=1;
+    LOGI("HOOKS openat=%d open=%d fopen=%d pread=%d mmap=%d ioctl=%d syscall=%d",!!gOpenAt,!!gOpen,!!gFopen,!!gPread,!!gMmap,!!gIoctl,!!gSyscall);
     return true;
 }
 
