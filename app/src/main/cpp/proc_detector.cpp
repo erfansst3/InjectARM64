@@ -52,12 +52,12 @@ static std::string readName(uintptr_t p){
  b[n]=0;
  return b;
 }
-static void traceLog(const char*n,uintptr_t a0,uintptr_t a1,const char*s=nullptr){
+static void traceLog(const char*n,uintptr_t a0,uintptr_t a1,uintptr_t ra,const char*s=nullptr){
  if(gTraceBusy)return;
  gTraceBusy=true;
  unsigned i=gTraceSeq.fetch_add(1);
- if(s)snprintf(gTraceBuf[i%64],sizeof(gTraceBuf[0]),"TRACE %s pid=%d tid=%ld ra=%s name=%s a0=%s a1=%s",n,getpid(),syscall(SYS_gettid),hex(a1).c_str(),s,hex(a0).c_str(),hex(a1).c_str());
- else snprintf(gTraceBuf[i%64],sizeof(gTraceBuf[0]),"TRACE %s pid=%d tid=%ld ra=%s a0=%s a1=%s",n,getpid(),syscall(SYS_gettid),hex(a1).c_str(),hex(a0).c_str(),hex(a1).c_str());
+ if(s)snprintf(gTraceBuf[i%64],sizeof(gTraceBuf[0]),"TRACE %s pid=%d tid=%ld ra=%s name=%s a0=%s a1=%s",n,getpid(),syscall(SYS_gettid),hex(ra).c_str(),s,hex(a0).c_str(),hex(a1).c_str());
+ else snprintf(gTraceBuf[i%64],sizeof(gTraceBuf[0]),"TRACE %s pid=%d tid=%ld ra=%s a0=%s a1=%s",n,getpid(),syscall(SYS_gettid),hex(ra).c_str(),hex(a0).c_str(),hex(a1).c_str());
  __android_log_print(ANDROID_LOG_INFO,"InjectARM64","%s",gTraceBuf[i%64]);
  gTraceBusy=false;
 }
@@ -71,7 +71,7 @@ extern "C" void traceLogEvent(int id,uintptr_t*r){
    case 4:gHitCIVV.fetch_add(1);break;
    case 5:gHitOnSoLoaded.fetch_add(1);break;
  }
- traceLog(names[id],r[0],r[1],id>=2?readName(r[0]).c_str():nullptr);
+ traceLog(names[id],r[0],r[1],r[15],id>=2?readName(r[0]).c_str():nullptr);
 }
 static bool hookOne(const char*n,void*rep,void**orig){uintptr_t a;if(!findSymbol(n,a))return false;gHook((void*)a,rep,orig);return *orig!=nullptr;}
 static std::string traceLoader(){if(!resolve())return "TRACE_LOADER=FAILED\nMSHookFunction=NO";bool a=hookOne("new_nativeLoad",(void*)traceNativeLoad,&gNativeLoadOrig);bool b=hookOne("new_dlopen_CI",(void*)traceDlopenCI,&gDlopenCIOrig);bool d=hookOne("new_do_dlopen_CIV",(void*)traceDlopenCIV,&gDlopenCIVOrig);bool v=hookOne("new_do_dlopen_CIVV",(void*)traceDlopenCIVV,&gDlopenCIVVOrig);bool e=hookOne("onSoLoaded",(void*)traceOnSoLoaded,&gOnSoLoadedOrig);int c=a+b+d+v+e;gTraceInstalled=c>0;return "TRACE_LOADER="+std::string(gTraceInstalled?"ACTIVE":"FAILED")+"\nMSHookFunction=YES\nnew_nativeLoad="+(a?"HOOKED":"NOT_FOUND")+"\nnew_dlopen_CI="+(b?"HOOKED":"NOT_FOUND")+"\nnew_do_dlopen_CIV="+(d?"HOOKED":"NOT_FOUND")+"\nnew_do_dlopen_CIVV="+(v?"HOOKED":"NOT_FOUND")+"\nonSoLoaded="+(e?"HOOKED":"NOT_FOUND")+"\nHOOK_COUNT="+std::to_string(c);}
