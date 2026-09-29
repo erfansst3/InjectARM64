@@ -18,6 +18,7 @@ static HookFn gHook=nullptr;
 extern "C" void* gNativeLoadOrig=nullptr;
 extern "C" void* gDlopenCIOrig=nullptr;
 extern "C" void* gDlopenCIVOrig=nullptr;
+extern "C" void* gDlopenCIVVOrig=nullptr;
 extern "C" void* gOnSoLoadedOrig=nullptr;
 static bool gTraceInstalled=false;
 static thread_local bool gTraceBusy=false;
@@ -26,6 +27,7 @@ static char gTraceBuf[64][256];
 extern "C" void traceNativeLoad();
 extern "C" void traceDlopenCI();
 extern "C" void traceDlopenCIV();
+extern "C" void traceDlopenCIVV();
 extern "C" void traceOnSoLoaded();
 struct GspaceModule{uintptr_t base=0;const char*path=nullptr;const ElfW(Phdr)*dynamicPhdr=nullptr;};
 static std::string hex(uintptr_t v){char b[32];snprintf(b,sizeof(b),"0x%llx",(unsigned long long)v);return b;}
@@ -43,9 +45,9 @@ static void traceLog(const char*n,uintptr_t a0,uintptr_t a1){
  __android_log_print(ANDROID_LOG_INFO,"InjectARM64","%s",gTraceBuf[i%64]);
  gTraceBusy=false;
 }
-extern "C" void traceLogEvent(int id,uintptr_t*r){static const char*names[]={"?","new_nativeLoad","new_dlopen_CI","new_do_dlopen_CIV","onSoLoaded"};if(id<1||id>4)return;traceLog(names[id],r[0],r[1]);}
+extern "C" void traceLogEvent(int id,uintptr_t*r){static const char*names[]={"?","new_nativeLoad","new_dlopen_CI","new_do_dlopen_CIV","new_do_dlopen_CIVV","onSoLoaded"};if(id<1||id>5)return;traceLog(names[id],r[0],r[1]);}
 static bool hookOne(const char*n,void*rep,void**orig){uintptr_t a;if(!findSymbol(n,a))return false;gHook((void*)a,rep,orig);return *orig!=nullptr;}
-static std::string traceLoader(){if(!resolve())return "TRACE: MSHookFunction NOT FOUND";int c=0;bool a=hookOne("new_nativeLoad",(void*)traceNativeLoad,&gNativeLoadOrig);bool b=hookOne("new_dlopen_CI",(void*)traceDlopenCI,&gDlopenCIOrig);bool d=hookOne("new_do_dlopen_CIV",(void*)traceDlopenCIV,&gDlopenCIVOrig);bool e=hookOne("onSoLoaded",(void*)traceOnSoLoaded,&gOnSoLoadedOrig);c=a+b+d+e;gTraceInstalled=c>0;return "TRACE_LOADER="+std::string(gTraceInstalled?"ACTIVE":"FAILED")+"\nMSHookFunction=YES\nnew_nativeLoad="+(a?"HOOKED":"NOT_FOUND")+"\nnew_dlopen_CI="+(b?"HOOKED":"NOT_FOUND")+"\nnew_do_dlopen_CIV="+(d?"HOOKED":"NOT_FOUND")+"\nonSoLoaded="+(e?"HOOKED":"NOT_FOUND")+"\nHOOK_COUNT="+std::to_string(c);}
+static std::string traceLoader(){if(!resolve())return "TRACE_LOADER=FAILED\nMSHookFunction=NO";bool a=hookOne("new_nativeLoad",(void*)traceNativeLoad,&gNativeLoadOrig);bool b=hookOne("new_dlopen_CI",(void*)traceDlopenCI,&gDlopenCIOrig);bool d=hookOne("new_do_dlopen_CIV",(void*)traceDlopenCIV,&gDlopenCIVOrig);bool v=hookOne("new_do_dlopen_CIVV",(void*)traceDlopenCIVV,&gDlopenCIVVOrig);bool e=hookOne("onSoLoaded",(void*)traceOnSoLoaded,&gOnSoLoadedOrig);int c=a+b+d+v+e;gTraceInstalled=c>0;return "TRACE_LOADER="+std::string(gTraceInstalled?"ACTIVE":"FAILED")+"\nMSHookFunction=YES\nnew_nativeLoad="+(a?"HOOKED":"NOT_FOUND")+"\nnew_dlopen_CI="+(b?"HOOKED":"NOT_FOUND")+"\nnew_do_dlopen_CIV="+(d?"HOOKED":"NOT_FOUND")+"\nnew_do_dlopen_CIVV="+(v?"HOOKED":"NOT_FOUND")+"\nonSoLoaded="+(e?"HOOKED":"NOT_FOUND")+"\nHOOK_COUNT="+std::to_string(c);}
 extern "C" JNIEXPORT jstring JNICALL Java_com_erfansst_procmapdetector_MainActivity_scanGspace(JNIEnv*e,jobject){auto s=scanGspace();return e->NewStringUTF(s.c_str());}
 extern "C" JNIEXPORT jstring JNICALL Java_com_erfansst_procmapdetector_MainActivity_traceLoader(JNIEnv*e,jobject){auto s=traceLoader();return e->NewStringUTF(s.c_str());}
 extern "C" JNIEXPORT jstring JNICALL Java_com_erfansst_procmapdetector_MainActivity_getLog(JNIEnv*e,jobject){
