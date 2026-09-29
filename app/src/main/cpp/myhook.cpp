@@ -291,8 +291,6 @@ using FreadFn=size_t(*)(void*,size_t,size_t,FILE*);
 static ReadFn gRead;
 static FreadFn gFread;
 
-static std::atomic<int> hRead{0},hFread{0};
-
 static ssize_t fakeRead(int fd,void* b,size_t n){
     hRead++;
     return gRead?gRead(fd,b,n):-1;
