@@ -33,9 +33,7 @@ using FopenFn=FILE*(*)(const char*,const char*);
 
 static MSHookFunctionFn gHook;
 static OpenFn gOpen;
-static OpenFn gOpenPrivate;
 static OpenAtFn gOpenAt;
-static OpenAt4Fn gOpenAtPrivate;
 static PreadFn gPread;
 static PreadFn gPread64;
 static PreadChkFn gPread64Chk;
@@ -231,24 +229,6 @@ static int fakeOpen(const char* p,int f,...){
     return (f&O_CREAT)?gOpen(p,f,m):gOpen(p,f);
 }
 
-static int fakeOpenPrivate(const char* p,int f,mode_t m){
-    if(isKossherPath(p)&&(f&O_ACCMODE)!=O_WRONLY){
-        hOpen++;
-        int fd=makeFakeFd(marker());
-        if(fd>=0){LOGI("HOOK __open %s pid=%d fd=%d",p,getpid(),fd);return fd;}
-    }
-    return gOpenPrivate?gOpenPrivate(p,f,m):-1;
-}
-
-static int fakeOpenAtPrivate(int d,const char* p,int f,mode_t m){
-    if(isKossherPath(p)&&(f&O_ACCMODE)!=O_WRONLY){
-        hOpenAt++;
-        int fd=makeFakeFd(marker());
-        if(fd>=0){LOGI("HOOK __openat %s pid=%d fd=%d",p,getpid(),fd);return fd;}
-    }
-    return gOpenAtPrivate?gOpenAtPrivate(d,p,f,m):-1;
-}
-
 static FILE* fakeFopen(const char* p,const char* m){
     if(isKossherPath(p)){
         hFopen++;
@@ -291,8 +271,6 @@ static int fakeIoctlPrivate(int fd,int req,void* arg){
 static void* gLibc;
 static void* gOpenAddr;
 static void* gOpenAtAddr;
-static void* gPrivateOpenAtAddr;
-static void* gPrivateOpenAddr;
 static void* gReadAddr;
 static void* gPreadAddr;
 static void* gFreadAddr;
@@ -355,8 +333,6 @@ static void libcScan(){
 
     hookLibcSymbol(gHook,"open",(void*)fakeOpen,(void**)&gOpen,&gOpenAddr);
     hookLibcSymbol(gHook,"openat",(void*)fakeOpenAt,(void**)&gOpenAt,&gOpenAtAddr);
-    hookLibcSymbol(gHook,"__openat",(void*)fakeOpenAtPrivate,(void**)&gOpenAtPrivate,&gPrivateOpenAtAddr);
-    hookLibcSymbol(gHook,"__open",(void*)fakeOpenPrivate,(void**)&gOpenPrivate,&gPrivateOpenAddr);
     hookLibcSymbol(gHook,"pread64",(void*)fakePread64,(void**)&gPread64,&gPreadAddr);
     hookLibcSymbol(gHook,"pread",(void*)fakePread,(void**)&gPread,&gPreadAddr);
     hookLibcSymbol(gHook,"fopen",(void*)fakeFopen,(void**)&gFopen,&gFopenAddr);
@@ -382,9 +358,10 @@ static bool installHook(){
     gHook=(MSHookFunctionFn)a;
     gInstalled=1;
     libcScan();
-    LOGI("HOOKS libc=%p open=%d openat=%d __openat=%d __open=%d pread=%d fopen=%d mmap=%d ioctl=%d",
-         gLibc,!!gOpen,!!gOpenAt,!!gOpenAtPrivate,!!gOpenPrivate,
-         !!gPread64||!!gPread,!!gFopen,!!gMmap,!!gIoctlPrivate);
+    LOGI("HOOKS libc=%p open=%d openat=%d fopen=%d pread=%d pread64=%d mmap=%d mmap64=%d ioctl=%d",
+         gLibc,!!gOpen,!!gOpenAt,!!gFopen,!!gPread,!!gPread64,
+         !!gMmap,!!gMmap64,!!gIoctlPrivate);
+    LOGI("VA_IOUNIFORMER_COLLISION_AVOIDED __openat=YES __open=YES");
     return true;
 }
 
