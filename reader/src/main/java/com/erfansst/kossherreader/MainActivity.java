@@ -2,54 +2,36 @@ package com.erfansst.kossherreader;
 
 import android.app.Activity;
 import android.os.Bundle;
-import android.graphics.Typeface;
-import android.widget.*;
+import android.os.Process;
+import android.widget.TextView;
 
-import java.io.*;
-import java.net.*;
+import java.io.FileInputStream;
+import java.nio.charset.StandardCharsets;
 
 public final class MainActivity extends Activity {
-    private final int port = 39391;
-    private TextView out;
+    @Override public void onCreate(Bundle state) {
+        super.onCreate(state);
 
-    @Override public void onCreate(Bundle b) {
-        super.onCreate(b);
-
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(24,24,24,24);
-
-        Button read = new Button(this);
-        read.setText("READ BUFFER");
-        root.addView(read, new LinearLayout.LayoutParams(-1,-2));
-
-        out = new TextView(this);
+        TextView out = new TextView(this);
         out.setTextSize(14);
-        out.setTypeface(Typeface.MONOSPACE);
-        out.setText("Waiting...");
-        ScrollView scroll = new ScrollView(this);
-        scroll.addView(out);
-        root.addView(scroll, new LinearLayout.LayoutParams(-1,0,1));
+        out.setPadding(24,24,24,24);
+        setContentView(out);
 
-        setContentView(root);
-
-        read.setOnClickListener(v -> readBuffer());
-    }
-
-    private void readBuffer() {
-        out.setText("READING...");
+        final String path = "/proc/" + Process.myPid() + "/kossher";
         new Thread(() -> {
             String result;
-            try (Socket s = new Socket()) {
-                s.connect(new InetSocketAddress("127.0.0.1", port), 1500);
-                DataInputStream in = new DataInputStream(s.getInputStream());
-                int len = in.readInt();
-                if (len < 0 || len > 65536) throw new IOException("bad length=" + len);
-                byte[] data = new byte[len];
-                in.readFully(data);
-                result = new String(data, "UTF-8");
+            try (FileInputStream in = new FileInputStream(path)) {
+                byte[] b = new byte[4096];
+                int n = in.read(b);
+                if (n < 0) {
+                    result = "READ=EOF\nPATH=" + path;
+                } else {
+                    result = "READ=OK\nPATH=" + path + "\n\n"
+                            + new String(b, 0, n, StandardCharsets.UTF_8);
+                }
             } catch (Throwable e) {
-                result = "READ FAILED\n" + e.getClass().getSimpleName() + ": " + e.getMessage();
+                result = "READ=FAILED\nPATH=" + path + "\n"
+                        + e.getClass().getSimpleName() + ": " + e.getMessage();
             }
             final String text = result;
             runOnUiThread(() -> out.setText(text));
