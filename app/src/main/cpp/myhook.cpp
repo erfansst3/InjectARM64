@@ -456,6 +456,8 @@ static void* gOpenAddr;
 static void* gOpenAtAddr;
 static void* gOpen2Addr;
 static void* gOpenAt2Addr;
+static void* gOpen64_2Addr;
+static void* gOpenAt64_2Addr;
 static void* gFopenAddr;
 static void* gIoctlAddr;
 static void* gSyscallAddr;
@@ -494,7 +496,7 @@ static void libcScan() {
     hookLibcSymbol(gHook, "openat", (void*)fakeOpenAt, (void**)&gOpenAt, &gOpenAtAddr);
     hookLibcSymbol(gHook, "__open_2", (void*)fakeOpen2, (void**)&gOpen2, &gOpen2Addr);
     hookLibcSymbol(gHook, "__openat_2", (void*)fakeOpenAt2, (void**)&gOpenAt2, &gOpenAt2Addr);
-    hookLibcSymbol(gHook, "__open64_2", (void*)fakeOpen2, (void**)&gOpen64_2, &gOpen2Addr);
+    hookLibcSymbol(gHook, "__open64_2", (void*)fakeOpen2, (void**)&gOpen64_2, &gOpen64_2Addr);
     hookLibcSymbol(gHook, "__openat64_2", (void*)fakeOpenAt2, (void**)&gOpenAt64_2, &gOpenAt64_2Addr);
     hookLibcSymbol(gHook, "fopen", (void*)fakeFopen, (void**)&gFopen, &gFopenAddr);
     hookLibcSymbol(gHook, "close", (void*)fakeClose, (void**)&gClose, nullptr);
