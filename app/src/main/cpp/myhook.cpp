@@ -43,7 +43,7 @@ static MmapFn gMmap64;
 static IoctlFn gIoctl;
 static FopenFn gFopen;
 static std::atomic<int> gInstalled{0},gGspaceFound{0};
-static std::atomic<int> hOpenAt{0},hOpen{0},hFopen{0},hPread{0},hMmap{0},hIoctl{0};
+static std::atomic<int> hOpenAt{0},hOpen{0},hFopen{0},hPread{0},hMmap{0},hIoctl{0},hRead{0},hFread{0};
 struct HookRecord{void* addr;void* orig;void* repl;};
 static HookRecord gHookRecords[32];static int gHookRecordCount=0;
 
