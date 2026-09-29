@@ -15,10 +15,10 @@
 #include <cstring>
 using HookFn=void(*)(void*,void*,void**);
 static HookFn gHook=nullptr;
-void* gNativeLoadOrig=nullptr;
-void* gDlopenCIOrig=nullptr;
-void* gDlopenCIVOrig=nullptr;
-void* gOnSoLoadedOrig=nullptr;
+extern "C" void* gNativeLoadOrig=nullptr;
+extern "C" void* gDlopenCIOrig=nullptr;
+extern "C" void* gDlopenCIVOrig=nullptr;
+extern "C" void* gOnSoLoadedOrig=nullptr;
 static bool gTraceInstalled=false;
 static thread_local bool gTraceBusy=false;
 extern "C" void traceNativeLoad();
