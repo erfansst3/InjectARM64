@@ -26,10 +26,8 @@
 using MSHookFunctionFn = void(*)(void*, void*, void**);
 using OpenFn = int(*)(const char*, int, ...);
 using OpenAtFn = int(*)(int, const char*, int, ...);
-using PreadFn = ssize_t(*)(int, void*, size_t, off_t);
 using Open2Fn = int(*)(const char*, int);
 using OpenAt2Fn = int(*)(int, const char*, int);
-using MmapFn = void*(*)(void*, size_t, int, int, int, off_t);
 using FopenFn = FILE*(*)(const char*, const char*);
 using IoctlFn = int(*)(int, unsigned long, void*);
 using SyscallFn = long(*)(long, long, long, long, long, long, long);
@@ -57,7 +55,7 @@ static std::atomic<int> gInstalled{0}, gGspaceFound{0};
 static std::atomic<int> hOpenAt{0}, hOpen{0}, hFopen{0}, hIoctl{0}, hSyscall{0};
 static std::atomic<int> hSystem{0}, hPopen{0}, hExecve{0};
 
-// محافظ محلی نخ جهت جلوگیری از حلقه بازگشتی بی‌‌نهایت و کرش
+// محافظ محلی نخ جهت جلوگیری از حلقه بازگشتی بی‌نهایت و کرش
 static thread_local bool g_inside_hook = false;
 
 // مدیریت و ثبت لیست FDهای فیک
@@ -150,10 +148,10 @@ static uintptr_t findGSpaceExport(const char* name) {
     return 0;
 }
 
-// تابع هوشمند برای شناسایی مسیرها و دستورات شل مرتبط با بافر فیک
+// فیلتر دقیق: فقط و فقط مسیرهایی که کلمه kossher دارند (مثل /proc/pid/kossher)
 static bool isKossherPath(const char* p) {
     if (!p) return false;
-    if (strstr(p, "kossher") || strstr(p, "/maps") || strstr(p, "/status") || strstr(p, "/cmdline") || strstr(p, "/proc/")) {
+    if (strstr(p, "kossher")) {
         return true;
     }
     return false;
@@ -320,7 +318,6 @@ static FILE* fakePopen(const char* command, const char* type) {
     return res;
 }
 
-// چاپ مستقیم بافر فیک در stdout هنگام فراخوانی system("cat ...")
 static int fakeSystem(const char* command) {
     if (g_inside_hook) return gSystem ? gSystem(command) : -1;
     g_inside_hook = true;
@@ -328,11 +325,6 @@ static int fakeSystem(const char* command) {
     if (isKossherPath(command)) {
         hSystem++;
         LOGI("HOOK system command=%s pid=%d", command, getpid());
-        
-        std::string data = marker();
-        fwrite(data.data(), 1, data.size(), stdout);
-        fflush(stdout);
-        
         g_inside_hook = false;
         return 0;
     }
@@ -342,37 +334,13 @@ static int fakeSystem(const char* command) {
     return res;
 }
 
-// رهگیری و چاپ مستقیم بافر فیک در صورت فراخوانی مستقیم execve
+// اصلاح execve: اجازه اجرای طبیعی دستور (وقتی cat اجرا شود، خودتکار open هوک شده را صدا می‌زند)
 static int fakeExecve(const char* filename, char* const argv[], char* const envp[]) {
-    if (g_inside_hook) return gExecve ? gExecve(filename, argv, envp) : execve(filename, argv, envp);
-    g_inside_hook = true;
-
-    bool match = false;
-    if (filename && isKossherPath(filename)) match = true;
-    if (!match && argv) {
-        for (int i = 0; argv[i] != nullptr; i++) {
-            if (isKossherPath(argv[i])) {
-                match = true;
-                break;
-            }
-        }
-    }
-
-    if (match) {
+    if (isKossherPath(filename)) {
         hExecve++;
-        LOGI("HOOK execve intercepted for path! pid=%d", getpid());
-        
-        std::string data = marker();
-        fwrite(data.data(), 1, data.size(), stdout);
-        fflush(stdout);
-
-        g_inside_hook = false;
-        return 0;
+        LOGI("HOOK execve passed for kossher pid=%d", getpid());
     }
-
-    int res = gExecve ? gExecve(filename, argv, envp) : execve(filename, argv, envp);
-    g_inside_hook = false;
-    return res;
+    return gExecve ? gExecve(filename, argv, envp) : execve(filename, argv, envp);
 }
 
 static int fakeIoctl(int fd, unsigned long request, void* arg) {
@@ -382,9 +350,8 @@ static int fakeIoctl(int fd, unsigned long request, void* arg) {
     g_inside_hook = true;
     hIoctl++;
 
-        if (isFakeFd(fd) && request == FIONREAD) {
+    if (isFakeFd(fd) && request == FIONREAD) {
         if (arg) {
-            // محاسبه بایت‌های باقی‌مانده واقعی در memfd
             off_t cur = syscall(SYS_lseek, fd, 0, SEEK_CUR);
             off_t end = syscall(SYS_lseek, fd, 0, SEEK_END);
             syscall(SYS_lseek, fd, cur, SEEK_SET);
@@ -421,21 +388,6 @@ static long fakeSyscall(long number, long a1, long a2, long a3, long a4, long a5
     }
 #endif
 
-#ifdef SYS_ioctl
-    if (number == SYS_ioctl) {
-        int fd = static_cast<int>(a1);
-        unsigned long req = static_cast<unsigned long>(a2);
-        void* arg = reinterpret_cast<void*>(a3);
-        if (isFakeFd(fd) && req == FIONREAD) {
-            if (arg) {
-                *reinterpret_cast<int*>(arg) = 0;
-            }
-            g_inside_hook = false;
-            return 0;
-        }
-    }
-#endif
-
     long ret = gSyscall ? gSyscall(number, a1, a2, a3, a4, a5, a6) : syscall(number, a1, a2, a3, a4, a5, a6);
     g_inside_hook = false;
     return ret;
@@ -456,16 +408,12 @@ static void* gExecveAddr;
 static bool hookLibcSymbol(MSHookFunctionFn h, const char* n, void* repl, void** orig, void** addrStore) {
     if (!gLibc || !n || !orig) return false;
     void* p = dlsym(gLibc, n);
-    if (!p) {
-        LOGI("LIBC_SYMBOL %s=NOT_FOUND", n);
-        return false;
-    }
+    if (!p) return false;
     if (addrStore) *addrStore = p;
 
     for (int i = 0; i < gHookRecordCount; i++) {
         if (gHookRecords[i].addr == p) {
             *orig = gHookRecords[i].orig;
-            LOGI("LIBC_HOOK %s=ALIAS addr=%p orig=%p", n, p, *orig);
             return *orig != nullptr;
         }
     }
@@ -477,16 +425,12 @@ static bool hookLibcSymbol(MSHookFunctionFn h, const char* n, void* repl, void**
         gHookRecords[gHookRecordCount++] = {p, saved, repl};
     }
     *orig = saved;
-    LOGI("LIBC_HOOK %s=YES addr=%p orig=%p", n, p, saved);
     return true;
 }
 
 static void libcScan() {
     gLibc = dlopen("libc.so", RTLD_NOW);
-    if (!gLibc) {
-        LOGW("libc dlopen failed");
-        return;
-    }
+    if (!gLibc) return;
 
     hookLibcSymbol(gHook, "open", (void*)fakeOpen, (void**)&gOpen, &gOpenAddr);
     hookLibcSymbol(gHook, "openat", (void*)fakeOpenAt, (void**)&gOpenAt, &gOpenAtAddr);
@@ -512,17 +456,14 @@ static bool installHook() {
     gHook = (MSHookFunctionFn)a;
     gInstalled = 1;
     libcScan();
-    LOGI("HOOKS_PROFILE=FULL_SAFE_WITH_SHELL_OUTPUT");
     return true;
 }
 
 static void* worker(void*) {
-    LOGI("libmyhook loaded pid=%d tid=%lu", getpid(), (unsigned long)pthread_self());
     for (int i = 0; i < 300 && !gInstalled.load(); i++) {
         if (installHook()) break;
         usleep(100000);
     }
-    if (!gInstalled.load()) LOGW("KOSSHER hook timed out; GSpace=%s", gGspaceFound.load() ? "FOUND" : "NOT_FOUND");
     return nullptr;
 }
 
