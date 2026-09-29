@@ -33,6 +33,7 @@ using FopenFn=FILE*(*)(const char*,const char*);
 
 static MSHookFunctionFn gHook;
 static OpenFn gOpen;
+static OpenFn gOpenPrivate;
 static OpenAtFn gOpenAt;
 static OpenAt4Fn gOpenAtPrivate;
 static PreadFn gPread;
@@ -163,8 +164,9 @@ static bool checkFd(int fd){
 
 static int fakeOpenAt(int d,const char* p,int f,...){
     if(isKossherPath(p)&&(f&O_ACCMODE)!=O_WRONLY){
-        int fd=makeFakeFd("KOSSHER_TEST_OPENAT\n");
-        if(fd>=0){hOpenAt++;LOGI("HOOK openat %s",p);return fd;}
+        hOpenAt++;
+        int fd=makeFakeFd(marker());
+        if(fd>=0){LOGI("HOOK openat %s",p);return fd;}
     }
     if(!gOpenAt){errno=ENOSYS;return -1;}
     va_list a;va_start(a,f);mode_t m=(f&O_CREAT)?va_arg(a,int):0;va_end(a);
@@ -173,8 +175,9 @@ static int fakeOpenAt(int d,const char* p,int f,...){
 
 static int fakeOpen(const char* p,int f,...){
     if(isKossherPath(p)&&(f&O_ACCMODE)!=O_WRONLY){
-        int fd=makeFakeFd("KOSSHER_TEST_OPEN\n");
-        if(fd>=0){hOpen++;LOGI("HOOK open %s",p);return fd;}
+        hOpen++;
+        int fd=makeFakeFd(marker());
+        if(fd>=0){LOGI("HOOK open %s",p);return fd;}
     }
     if(!gOpen){errno=ENOSYS;return -1;}
     va_list a;va_start(a,f);mode_t m=(f&O_CREAT)?va_arg(a,int):0;va_end(a);
@@ -183,24 +186,27 @@ static int fakeOpen(const char* p,int f,...){
 
 static int fakeOpenPrivate(const char* p,int f,mode_t m){
     if(isKossherPath(p)&&(f&O_ACCMODE)!=O_WRONLY){
-        int fd=makeFakeFd("KOSSHER_TEST_OPEN_PRIVATE\n");
-        if(fd>=0){hOpen++;LOGI("HOOK __open %s",p);return fd;}
+        hOpen++;
+        int fd=makeFakeFd(marker());
+        if(fd>=0){LOGI("HOOK __open %s",p);return fd;}
     }
     return gOpenPrivate?gOpenPrivate(p,f,m):-1;
 }
 
 static int fakeOpenAtPrivate(int d,const char* p,int f,mode_t m){
     if(isKossherPath(p)&&(f&O_ACCMODE)!=O_WRONLY){
-        int fd=makeFakeFd("KOSSHER_TEST_OPENAT_PRIVATE\n");
-        if(fd>=0){hOpenAt++;LOGI("HOOK __openat %s",p);return fd;}
+        hOpenAt++;
+        int fd=makeFakeFd(marker());
+        if(fd>=0){LOGI("HOOK __openat %s",p);return fd;}
     }
     return gOpenAtPrivate?gOpenAtPrivate(d,p,f,m):-1;
 }
 
 static FILE* fakeFopen(const char* p,const char* m){
     if(isKossherPath(p)){
-        int fd=makeFakeFd("KOSSHER_TEST_FOPEN\n");
-        if(fd>=0){hFopen++;LOGI("HOOK fopen %s",p);return fdopen(fd,m&&*m?m:"r");}
+        hFopen++;
+        int fd=makeFakeFd(marker());
+        if(fd>=0){LOGI("HOOK fopen %s",p);return fdopen(fd,m&&*m?m:"r");}
     }
     return gFopen?gFopen(p,m):nullptr;
 }
@@ -259,7 +265,6 @@ using FreadFn=size_t(*)(void*,size_t,size_t,FILE*);
 
 static ReadFn gRead;
 static FreadFn gFread;
-static OpenFn gOpenPrivate;
 
 static std::atomic<int> hRead{0},hFread{0};
 
