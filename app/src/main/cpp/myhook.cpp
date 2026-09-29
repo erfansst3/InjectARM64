@@ -534,9 +534,9 @@ static void libcScan(){
     // ioctl/syscall are syscall stubs on arm64; use imported GOT slots rather
     // than patching libc's SVC-containing functions.
     bool ioctlImportHooked=hookAllImportedSymbols(
-        "ioctl",(void*)fakeIoctlImport,(void**)&gIoctlImport,&gIoctlImportSlot);
+        "ioctl",(void*)fakeIoctlImport,(void**)&gIoctlImport);
     bool syscallImportHooked=hookAllImportedSymbols(
-        "syscall",(void*)fakeSyscallImport,(void**)&gSyscallImport,&gSyscallImportSlot);
+        "syscall",(void*)fakeSyscallImport,(void**)&gSyscallImport);
     LOGI("IMPORT_HOOKS ioctl=%d syscall=%d",ioctlImportHooked,syscallImportHooked);
 }
 
