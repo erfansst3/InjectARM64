@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.22.1)
 project(kossherhook)
+
 add_library(myhook SHARED myhook.cpp)
+
 find_library(log-lib log)
 find_library(dl-lib dl)
-target_link_libraries(myhook \${log-lib} \${dl-lib})
+
+target_link_libraries(myhook ${log-lib} ${dl-lib})
