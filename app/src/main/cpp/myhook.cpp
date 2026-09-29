@@ -33,8 +33,6 @@ using MmapFn=void*(*)(void*,size_t,int,int,int,off_t);
 using FopenFn=FILE*(*)(const char*,const char*);
 using IoctlCallFn=int(*)(int,int,void*);
 using SyscallCallFn=long(*)(long,long,long,long,long,long,long);
-using IoctlCallFn=int(*)(int,int,void*);
-using SyscallCallFn=long(*)(long,long,long,long,long,long,long);
 
 static MSHookFunctionFn gHook;
 static OpenFn gOpen;
@@ -305,8 +303,6 @@ static void* gPreadAddr;
 static void* gFreadAddr;
 static void* gFopenAddr;
 static void* gMmapAddr;
-static void* gIoctlImportSlot;
-static void* gSyscallImportSlot;
 static void* gIoctlImportSlot;
 static void* gSyscallImportSlot;
 
