@@ -31,6 +31,7 @@ using OpenAt2Fn=int(*)(int,const char*,int);
 using PreadChkFn=ssize_t(*)(int,void*,size_t,off_t,size_t);
 using MmapFn=void*(*)(void*,size_t,int,int,int,off_t);
 using FopenFn=FILE*(*)(const char*,const char*);
+using IoctlFixedFn=int(*)(int,int,void*);
 
 static MSHookFunctionFn gHook;
 static OpenFn gOpen;
@@ -45,6 +46,7 @@ static PreadChkFn gPread64Chk;
 static MmapFn gMmap;
 static MmapFn gMmap64;
 static FopenFn gFopen;
+static IoctlFixedFn gIoctl;
 static std::atomic<int> gInstalled{0},gGspaceFound{0};
 static std::atomic<int> hOpenAt{0},hOpen{0},hFopen{0},hPread{0},hMmap{0},hIoctl{0},hRead{0},hFread{0};
 struct HookRecord{void* addr;void* orig;void* repl;};
@@ -298,6 +300,7 @@ static void* gPreadAddr;
 static void* gFreadAddr;
 static void* gFopenAddr;
 static void* gMmapAddr;
+static void* gIoctlAddr;
 
 using ReadFn=ssize_t(*)(int,void*,size_t);
 using FreadFn=size_t(*)(void*,size_t,size_t,FILE*);
@@ -314,6 +317,12 @@ static size_t fakeFread(void* p,size_t s,size_t n,FILE* f){
     hFread++;
     return gFread?gFread(p,s,n,f):0;
 }
+
+static int fakeIoctlFixed(int fd,int req,void* arg){
+    hIoctl++;
+    return gIoctl?gIoctl(fd,req,arg):-1;
+}
+
 
 static bool hookLibcSymbol(MSHookFunctionFn h,const char* n,void* repl,void** orig,void** addrStore){
     if(!gLibc||!n||!orig)return false;
@@ -356,9 +365,18 @@ static void libcScan(){
     hookLibcSymbol(gHook,"__openat_2",(void*)fakeOpenAt2,(void**)&gOpenAt2,&gOpenAt2Addr);
     hookLibcSymbol(gHook,"__open64_2",(void*)fakeOpen2,(void**)&gOpen64_2,&gOpen2Addr);
     hookLibcSymbol(gHook,"__openat64_2",(void*)fakeOpenAt2,(void**)&gOpenAt64_2,&gOpenAt2Addr);
-    // Isolation profile: keep only low-risk file-open hooks while diagnosing
-    // the GSpace crash. Do not patch read/pread/fread/mmap yet.
+    // Stable libc hooks. Keep VirtualApp's __open/__openat untouched.
+    hookLibcSymbol(gHook,"read",(void*)fakeRead,(void**)&gRead,&gReadAddr);
+    hookLibcSymbol(gHook,"pread64",(void*)fakePread64,(void**)&gPread64,&gPreadAddr);
+    hookLibcSymbol(gHook,"pread",(void*)fakePread,(void**)&gPread,&gPreadAddr);
     hookLibcSymbol(gHook,"fopen",(void*)fakeFopen,(void**)&gFopen,&gFopenAddr);
+    hookLibcSymbol(gHook,"fread",(void*)fakeFread,(void**)&gFread,&gFreadAddr);
+    hookLibcSymbol(gHook,"mmap",(void*)fakeMmap,(void**)&gMmap,&gMmapAddr);
+    hookLibcSymbol(gHook,"mmap64",(void*)fakeMmap64,(void**)&gMmap64,&gMmapAddr);
+
+    // Bionic's public ioctl() forwards to fixed-signature __ioctl().
+    // Hook the fixed entrypoint instead of the variadic wrapper.
+    hookLibcSymbol(gHook,"__ioctl",(void*)fakeIoctlFixed,(void**)&gIoctl,&gIoctlAddr);
 }
 
 static bool installHook(){
@@ -368,10 +386,11 @@ static bool installHook(){
     gHook=(MSHookFunctionFn)a;
     gInstalled=1;
     libcScan();
-    LOGI("HOOKS_PROFILE=OPEN_ONLY");
-    LOGI("HOOKS libc=%p open=%d openat=%d __open_2=%d __openat_2=%d fopen=%d",
-         gLibc,!!gOpen,!!gOpenAt,!!gOpen2,!!gOpenAt2,!!gFopen);
-    LOGI("DISABLED read=fread=pread=pread64=mmap=mmap64=ioctl");
+    LOGI("HOOKS_PROFILE=STABLE_PLUS_IOCTL");
+    LOGI("HOOKS libc=%p open=%d openat=%d __open_2=%d __openat_2=%d fopen=%d fread=%d read=%d pread=%d pread64=%d mmap=%d mmap64=%d __ioctl=%d",
+         gLibc,!!gOpen,!!gOpenAt,!!gOpen2,!!gOpenAt2,!!gFopen,!!gFread,!!gRead,
+         !!gPread,!!gPread64,!!gMmap,!!gMmap64,!!gIoctl);
+    LOGI("DISABLED syscall=direct-svc");
     LOGI("VA_IOUNIFORMER_PRESERVED __openat=YES __open=YES");
     return true;
 }
