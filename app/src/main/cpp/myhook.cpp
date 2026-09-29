@@ -12,12 +12,8 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/syscall.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
 #include <pthread.h>
 #include <errno.h>
-#include <mutex>
 
 #define TAG "InjectARM64"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
@@ -35,13 +31,7 @@ static std::atomic<int> gInstalled{0};
 static std::atomic<int> gHits{0};
 static std::atomic<int> gGspaceFound{0};
 
-static constexpr int kReaderPort = 39391;
 static const char kTargetSuffix[] = "/kossher";
-
-static std::mutex gBufferMutex;
-static std::string gLastBuffer =
-        "KOSSHER_BUFFER=NO_HIT\n"
-        "STATUS=WAITING_FOR_/proc/<pid>/kossher\n";
 
 struct GSpaceModule {
     uintptr_t base = 0;
@@ -222,12 +212,7 @@ static int makeFakeFd(const std::string& data) {
 
 static int hookedOpenAt(int dirfd, const char* path, int flags, ...) {
     if (isKossherPath(path) && (flags & O_ACCMODE) != O_WRONLY) {
-        const std::string data = makeBuffer(path);
-        {
-            std::lock_guard<std::mutex> lock(gBufferMutex);
-            gLastBuffer = data;
-        }
-        ++gHits;
+        const std::string data = makeBuffer(path);        ++gHits;
 
         const int fd = makeFakeFd(data);
         if (fd >= 0) {
@@ -253,12 +238,7 @@ static int hookedOpenAt(int dirfd, const char* path, int flags, ...) {
 
 static int hookedOpen(const char* path, int flags, ...) {
     if (isKossherPath(path) && (flags & O_ACCMODE) != O_WRONLY) {
-        const std::string data = makeBuffer(path);
-        {
-            std::lock_guard<std::mutex> lock(gBufferMutex);
-            gLastBuffer = data;
-        }
-        ++gHits;
+        const std::string data = makeBuffer(path);        ++gHits;
 
         const int fd = makeFakeFd(data);
         if (fd >= 0) {
@@ -280,58 +260,6 @@ static int hookedOpen(const char* path, int flags, ...) {
         return gOriginalOpen(path, flags, mode);
     }
     return gOriginalOpen(path, flags);
-}
-
-static void* readerServer(void*) {
-    const int s = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
-    if (s < 0) return nullptr;
-
-    int one = 1;
-    setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
-
-    sockaddr_in addr{};
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(kReaderPort);
-    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-
-    if (bind(s, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0 ||
-        listen(s, 4) < 0) {
-        close(s);
-        return nullptr;
-    }
-
-    LOGI("KOSSHER READER port=%d pid=%d", kReaderPort, getpid());
-
-    for (;;) {
-        const int c = accept4(s, nullptr, nullptr, SOCK_CLOEXEC);
-        if (c < 0) continue;
-
-        std::string data;
-        {
-            std::lock_guard<std::mutex> lock(gBufferMutex);
-            data = gLastBuffer;
-        }
-
-        uint32_t len = htonl(static_cast<uint32_t>(data.size()));
-        (void)send(c, &len, sizeof(len), MSG_NOSIGNAL);
-
-        size_t sent = 0;
-        while (sent < data.size()) {
-            const ssize_t n = send(
-                    c, data.data() + sent, data.size() - sent, MSG_NOSIGNAL);
-            if (n <= 0) break;
-            sent += static_cast<size_t>(n);
-        }
-        close(c);
-    }
-    return nullptr;
-}
-
-static void startReaderServer() {
-    pthread_t t;
-    if (pthread_create(&t, nullptr, readerServer, nullptr) == 0) {
-        pthread_detach(t);
-    }
 }
 
 static bool installHook() {
@@ -400,7 +328,6 @@ static void startWorker() {
 __attribute__((constructor))
 static void onLibraryLoaded() {
     startWorker();
-    startReaderServer();
 }
 
 static std::string statusString() {
@@ -412,7 +339,6 @@ static std::string statusString() {
     out += "HOOK=" +
            std::string(gInstalled.load() ? "INSTALLED" : "NOT_INSTALLED") + "\n";
     out += "KOSSHER_HITS=" + std::to_string(gHits.load()) + "\n";
-    out += "READER_PORT=" + std::to_string(kReaderPort) + "\n";
     return out;
 }
 
