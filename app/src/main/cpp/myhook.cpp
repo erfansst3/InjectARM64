@@ -23,7 +23,6 @@
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,TAG,__VA_ARGS__)
 #define LOGW(...) __android_log_print(ANDROID_LOG_WARN,TAG,__VA_ARGS__)
 
-// شماره سیستم‌کال openat2 در ARM64
 #ifndef SYS_openat2
 #define SYS_openat2 437
 #endif
@@ -153,7 +152,7 @@ static uintptr_t findGSpaceExport(const char* name) {
     return 0;
 }
 
-// فیلتر دقیق: فقط و فقط مسیرهایی که کلمه kossher دارند (مثل /proc/pid/kossher)
+// فیلتر اختصاصی kossher
 static bool isKossherPath(const char* p) {
     if (!p) return false;
     if (strstr(p, "kossher")) {
@@ -330,6 +329,11 @@ static int fakeSystem(const char* command) {
     if (isKossherPath(command)) {
         hSystem++;
         LOGI("HOOK system command=%s pid=%d", command, getpid());
+        
+        std::string data = marker();
+        printf("%s", data.c_str());
+        fflush(stdout);
+        
         g_inside_hook = false;
         return 0;
     }
@@ -340,11 +344,35 @@ static int fakeSystem(const char* command) {
 }
 
 static int fakeExecve(const char* filename, char* const argv[], char* const envp[]) {
-    if (isKossherPath(filename)) {
-        hExecve++;
-        LOGI("HOOK execve passed for kossher pid=%d", getpid());
+    if (g_inside_hook) return gExecve ? gExecve(filename, argv, envp) : execve(filename, argv, envp);
+    g_inside_hook = true;
+
+    bool match = false;
+    if (filename && isKossherPath(filename)) match = true;
+    if (!match && argv) {
+        for (int i = 0; argv[i] != nullptr; i++) {
+            if (isKossherPath(argv[i])) {
+                match = true;
+                break;
+            }
+        }
     }
-    return gExecve ? gExecve(filename, argv, envp) : execve(filename, argv, envp);
+
+    if (match) {
+        hExecve++;
+        LOGI("HOOK execve intercepted for kossher pid=%d", getpid());
+        
+        std::string data = marker();
+        printf("%s", data.c_str());
+        fflush(stdout);
+
+        g_inside_hook = false;
+        _exit(0);
+    }
+
+    int res = gExecve ? gExecve(filename, argv, envp) : execve(filename, argv, envp);
+    g_inside_hook = false;
+    return res;
 }
 
 static int fakeIoctl(int fd, unsigned long request, void* arg) {
@@ -356,7 +384,7 @@ static int fakeIoctl(int fd, unsigned long request, void* arg) {
 
     if (isFakeFd(fd) && request == FIONREAD) {
         if (arg) {
-            *reinterpret_cast<int*>(arg) = 0; // بازگرداندن 0 بایت بر اساس رفتار استاندارد procfs
+            *reinterpret_cast<int*>(arg) = 0;
         }
         g_inside_hook = false;
         return 0;
@@ -467,7 +495,7 @@ static void libcScan() {
     hookLibcSymbol(gHook, "__open_2", (void*)fakeOpen2, (void**)&gOpen2, &gOpen2Addr);
     hookLibcSymbol(gHook, "__openat_2", (void*)fakeOpenAt2, (void**)&gOpenAt2, &gOpenAt2Addr);
     hookLibcSymbol(gHook, "__open64_2", (void*)fakeOpen2, (void**)&gOpen64_2, &gOpen2Addr);
-    hookLibcSymbol(gHook, "__openat64_2", (void*)fakeOpenAt2, (void**)&gOpenAt64_2, &gOpenAt2Addr);
+    hookLibcSymbol(gHook, "__openat64_2", (void*)fakeOpenAt2, (void**)&gOpenAt64_2, &gOpenAt64_2Addr);
     hookLibcSymbol(gHook, "fopen", (void*)fakeFopen, (void**)&gFopen, &gFopenAddr);
     hookLibcSymbol(gHook, "close", (void*)fakeClose, (void**)&gClose, nullptr);
 
