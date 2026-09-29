@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22.1)
 project(procmap_test)
-add_library(procmap_test SHARED proc_detector.cpp)
+add_library(procmap_test SHARED proc_detector.cpp trace.S)
 find_library(log-lib log)
 find_library(dl-lib dl)
 target_link_libraries(procmap_test ${log-lib} ${dl-lib})
