@@ -1,4 +1,4 @@
 plugins{id("com.android.application")}
-android{namespace="com.erfansst.procmapdetector";compileSdk=35
-defaultConfig{applicationId="com.erfansst.procmapdetector";minSdk=26;targetSdk=35;ndkVersion="26.3.11579264";versionCode=1;versionName="1.0";ndk{abiFilters+="arm64-v8a"}}
+android{namespace="com.erfansst.kosshertest";compileSdk=35
+defaultConfig{applicationId="com.erfansst.kosshertest";minSdk=26;targetSdk=35;versionCode=1;versionName="1.0";ndkVersion="26.3.11579264";ndk{abiFilters+="arm64-v8a"}}
 externalNativeBuild{cmake{path="src/main/cpp/CMakeLists.txt";version="3.22.1"}}}
