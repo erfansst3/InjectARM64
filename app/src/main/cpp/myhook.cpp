@@ -320,6 +320,9 @@ static size_t fakeFread(void* p,size_t s,size_t n,FILE* f){
 
 static int fakeIoctlFixed(int fd,int req,void* arg){
     hIoctl++;
+    // On AArch64, the third ioctl argument is passed in x2. Treating the
+    // public variadic ioctl entry as this fixed ABI is safe for forwarding;
+    // do not inspect/dereference arg.
     return gIoctl?gIoctl(fd,req,arg):-1;
 }
 
@@ -374,9 +377,10 @@ static void libcScan(){
     hookLibcSymbol(gHook,"mmap",(void*)fakeMmap,(void**)&gMmap,&gMmapAddr);
     hookLibcSymbol(gHook,"mmap64",(void*)fakeMmap64,(void**)&gMmap64,&gMmapAddr);
 
-    // Bionic's public ioctl() forwards to fixed-signature __ioctl().
-    // Hook the fixed entrypoint instead of the variadic wrapper.
-    hookLibcSymbol(gHook,"__ioctl",(void*)fakeIoctlFixed,(void**)&gIoctl,&gIoctlAddr);
+    // Hook the public ioctl entry. Use a fixed third parameter on arm64 only;
+    // the register ABI matches Bionic's variadic forwarding without touching
+    // the argument's pointee.
+    hookLibcSymbol(gHook,"ioctl",(void*)fakeIoctlFixed,(void**)&gIoctl,&gIoctlAddr);
 }
 
 static bool installHook(){
