@@ -25,6 +25,7 @@ using MSHookFunctionFn=void(*)(void*,void*,void**);
 using OpenFn=int(*)(const char*,int,...);
 using OpenAtFn=int(*)(int,const char*,int,...);
 using PreadFn=ssize_t(*)(int,void*,size_t,off_t);
+using OpenAt4Fn=int(*)(int,const char*,int,mode_t);
 using PreadChkFn=ssize_t(*)(int,void*,size_t,off_t,size_t);
 using MmapFn=void*(*)(void*,size_t,int,int,int,off_t);
 using Ioctl3Fn=int(*)(int,int,void*);
@@ -178,7 +179,7 @@ static std::string marker(){
         gOpenAt!=nullptr,gOpen!=nullptr,gFopen!=nullptr,
         gPread!=nullptr||gPread64!=nullptr||gPread64Chk!=nullptr,
         gMmap!=nullptr||gMmap64!=nullptr,
-        gIoctl!=nullptr||gIoctlPrivate!=nullptr);
+        gIoctlPrivate!=nullptr);
     return n>0?std::string(b,(size_t)n):std::string();
 }
 
