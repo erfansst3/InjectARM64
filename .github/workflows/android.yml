@@ -4,6 +4,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
+      BUILD_TRIGGER: db454f5
       ANDROID_HOME: /usr/local/lib/android/sdk
       ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
     steps:
