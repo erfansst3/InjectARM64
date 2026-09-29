@@ -33,9 +33,13 @@ using FopenFn=FILE*(*)(const char*,const char*);
 
 static MSHookFunctionFn gHook;
 static OpenFn gOpen;
+static OpenFn gOpen64;
 static OpenFn gOpenPrivate;
 static OpenAtFn gOpenAt;
+static OpenAtFn gOpenAt64;
 static OpenAt4Fn gOpenAtPrivate;
+static OpenAt4Fn gOpenAt2;
+static OpenFn gOpen2;
 static PreadFn gPread;
 static PreadFn gPread64;
 static PreadChkFn gPread64Chk;
@@ -44,9 +48,11 @@ static MmapFn gMmap64;
 static IoctlFn gIoctl;
 static Ioctl3Fn gIoctlPrivate;
 static FopenFn gFopen;
+static FopenFn gFopen64;
 static std::atomic<int> gInstalled{0},gGspaceFound{0};
 static std::atomic<int> hOpenAt{0},hOpen{0},hFopen{0},hPread{0},hMmap{0},hIoctl{0};
-static void* gPatched[16];static int gPatchedCount=0;
+struct HookRecord{void* addr;void* orig;void* repl;};
+static HookRecord gHookRecords[32];static int gHookRecordCount=0;
 
 struct GSpaceModule{uintptr_t base=0;const ElfW(Phdr)* dynamicPhdr=nullptr;};
 
@@ -166,7 +172,7 @@ static int fakeOpenAt(int d,const char* p,int f,...){
     if(isKossherPath(p)&&(f&O_ACCMODE)!=O_WRONLY){
         hOpenAt++;
         int fd=makeFakeFd(marker());
-        if(fd>=0){LOGI("HOOK openat %s",p);return fd;}
+        if(fd>=0){LOGI("HOOK openat %s pid=%d fd=%d",p,getpid(),fd);return fd;}
     }
     if(!gOpenAt){errno=ENOSYS;return -1;}
     va_list a;va_start(a,f);mode_t m=(f&O_CREAT)?va_arg(a,int):0;va_end(a);
@@ -177,7 +183,7 @@ static int fakeOpen(const char* p,int f,...){
     if(isKossherPath(p)&&(f&O_ACCMODE)!=O_WRONLY){
         hOpen++;
         int fd=makeFakeFd(marker());
-        if(fd>=0){LOGI("HOOK open %s",p);return fd;}
+        if(fd>=0){LOGI("HOOK open %s pid=%d fd=%d",p,getpid(),fd);return fd;}
     }
     if(!gOpen){errno=ENOSYS;return -1;}
     va_list a;va_start(a,f);mode_t m=(f&O_CREAT)?va_arg(a,int):0;va_end(a);
@@ -188,7 +194,7 @@ static int fakeOpenPrivate(const char* p,int f,mode_t m){
     if(isKossherPath(p)&&(f&O_ACCMODE)!=O_WRONLY){
         hOpen++;
         int fd=makeFakeFd(marker());
-        if(fd>=0){LOGI("HOOK __open %s",p);return fd;}
+        if(fd>=0){LOGI("HOOK __open %s pid=%d fd=%d",p,getpid(),fd);return fd;}
     }
     return gOpenPrivate?gOpenPrivate(p,f,m):-1;
 }
@@ -197,16 +203,34 @@ static int fakeOpenAtPrivate(int d,const char* p,int f,mode_t m){
     if(isKossherPath(p)&&(f&O_ACCMODE)!=O_WRONLY){
         hOpenAt++;
         int fd=makeFakeFd(marker());
-        if(fd>=0){LOGI("HOOK __openat %s",p);return fd;}
+        if(fd>=0){LOGI("HOOK __openat %s pid=%d fd=%d",p,getpid(),fd);return fd;}
     }
     return gOpenAtPrivate?gOpenAtPrivate(d,p,f,m):-1;
+}
+
+static int fakeOpenAt2(int d,const char* p,int f){
+    if(isKossherPath(p)&&(f&O_ACCMODE)!=O_WRONLY){
+        hOpenAt++;
+        int fd=makeFakeFd(marker());
+        if(fd>=0){LOGI("HOOK __openat_2 %s pid=%d fd=%d",p,getpid(),fd);return fd;}
+    }
+    return gOpenAt2?gOpenAt2(d,p,f):-1;
+}
+
+static int fakeOpen2(const char* p,int f){
+    if(isKossherPath(p)&&(f&O_ACCMODE)!=O_WRONLY){
+        hOpen++;
+        int fd=makeFakeFd(marker());
+        if(fd>=0){LOGI("HOOK __open_2 %s pid=%d fd=%d",p,getpid(),fd);return fd;}
+    }
+    return gOpen2?gOpen2(p,f):-1;
 }
 
 static FILE* fakeFopen(const char* p,const char* m){
     if(isKossherPath(p)){
         hFopen++;
         int fd=makeFakeFd(marker());
-        if(fd>=0){LOGI("HOOK fopen %s",p);return fdopen(fd,m&&*m?m:"r");}
+        if(fd>=0){LOGI("HOOK fopen %s pid=%d fd=%d",p,getpid(),fd);return fdopen(fd,m&&*m?m:"r");}
     }
     return gFopen?gFopen(p,m):nullptr;
 }
@@ -286,10 +310,24 @@ static bool hookLibcSymbol(MSHookFunctionFn h,const char* n,void* repl,void** or
         return false;
     }
     if(addrStore)*addrStore=p;
-    h(p,repl,orig);
-    bool ok=*orig!=nullptr;
-    LOGI("LIBC_HOOK %s=%s addr=%p",n,ok?"YES":"NO",p);
-    return ok;
+
+    for(int i=0;i<gHookRecordCount;i++){
+        if(gHookRecords[i].addr==p){
+            *orig=gHookRecords[i].orig;
+            LOGI("LIBC_HOOK %s=ALIAS addr=%p orig=%p",n,p,*orig);
+            return *orig!=nullptr;
+        }
+    }
+
+    void* saved=nullptr;
+    h(p,repl,&saved);
+    if(!saved)return false;
+    if(gHookRecordCount<(int)(sizeof(gHookRecords)/sizeof(gHookRecords[0]))){
+        gHookRecords[gHookRecordCount++]={p,saved,repl};
+    }
+    *orig=saved;
+    LOGI("LIBC_HOOK %s=YES addr=%p orig=%p",n,p,saved);
+    return true;
 }
 
 static void libcScan(){
@@ -300,13 +338,18 @@ static void libcScan(){
     }
 
     hookLibcSymbol(gHook,"open",(void*)fakeOpen,(void**)&gOpen,&gOpenAddr);
+    hookLibcSymbol(gHook,"open64",(void*)fakeOpen,(void**)&gOpen64,&gOpenAddr);
     hookLibcSymbol(gHook,"openat",(void*)fakeOpenAt,(void**)&gOpenAt,&gOpenAtAddr);
+    hookLibcSymbol(gHook,"openat64",(void*)fakeOpenAt,(void**)&gOpenAt64,&gOpenAtAddr);
     hookLibcSymbol(gHook,"__openat",(void*)fakeOpenAtPrivate,(void**)&gOpenAtPrivate,&gPrivateOpenAtAddr);
+    hookLibcSymbol(gHook,"__openat_2",(void*)fakeOpenAt2,(void**)&gOpenAt2,&gPrivateOpenAtAddr);
     hookLibcSymbol(gHook,"__open",(void*)fakeOpenPrivate,(void**)&gOpenPrivate,&gPrivateOpenAddr);
+    hookLibcSymbol(gHook,"__open_2",(void*)fakeOpen2,(void**)&gOpen2,&gPrivateOpenAddr);
     hookLibcSymbol(gHook,"read",(void*)fakeRead,(void**)&gRead,&gReadAddr);
     hookLibcSymbol(gHook,"pread64",(void*)fakePread64,(void**)&gPread64,&gPreadAddr);
     hookLibcSymbol(gHook,"pread",(void*)fakePread,(void**)&gPread,&gPreadAddr);
     hookLibcSymbol(gHook,"fopen",(void*)fakeFopen,(void**)&gFopen,&gFopenAddr);
+    hookLibcSymbol(gHook,"fopen64",(void*)fakeFopen,(void**)&gFopen64,&gFopenAddr);
     hookLibcSymbol(gHook,"fread",(void*)fakeFread,(void**)&gFread,&gFreadAddr);
     hookLibcSymbol(gHook,"mmap",(void*)fakeMmap,(void**)&gMmap,&gMmapAddr);
     hookLibcSymbol(gHook,"mmap64",(void*)fakeMmap64,(void**)&gMmap64,&gMmapAddr);
@@ -400,9 +443,10 @@ static bool installHook(){
     gHook=(MSHookFunctionFn)a;
     gInstalled=1;
     libcScan();
-    LOGI("HOOKS libc=%p open=%d openat=%d __openat=%d __open=%d read=%d pread=%d fopen=%d fread=%d mmap=%d ioctl=%d",
-         gLibc,!!gOpen,!!gOpenAt,!!gOpenAtPrivate,!!gOpenPrivate,!!gRead,
-         !!gPread64||!!gPread,!!gFopen,!!gFread,!!gMmap64||!!gMmap,!!gIoctl);
+    LOGI("HOOKS libc=%p open=%d open64=%d openat=%d openat64=%d __openat=%d __openat_2=%d __open=%d __open_2=%d read=%d pread=%d fopen=%d fopen64=%d fread=%d mmap=%d mmap64=%d ioctl=%d",
+         gLibc,!!gOpen,!!gOpen64,!!gOpenAt,!!gOpenAt64,!!gOpenAtPrivate,!!gOpenAt2,
+         !!gOpenPrivate,!!gOpen2,!!gRead,!!gPread64||!!gPread,!!gFopen,!!gFopen64,
+         !!gFread,!!gMmap,!!gMmap64,!!gIoctl);
     runSelfTest();
     return true;
 }
