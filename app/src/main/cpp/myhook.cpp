@@ -45,6 +45,7 @@ static Ioctl3Fn gIoctlPrivate;
 static FopenFn gFopen;
 static std::atomic<int> gInstalled{0},gGspaceFound{0};
 static std::atomic<int> hOpenAt{0},hOpen{0},hFopen{0},hPread{0},hMmap{0},hIoctl{0};
+static void* gPatched[16];static int gPatchedCount=0;
 
 struct GSpaceModule{uintptr_t base=0;const ElfW(Phdr)* dynamicPhdr=nullptr;};
 
@@ -170,7 +171,7 @@ static int fakeOpenAt(int d,const char* p,int f,...){
     return gOpenAt(d,p,f,m);
 }
 
-static int fakeOpen(int dmy,const char* p,int f,...){
+static int fakeOpen(const char* p,int f,...){
     if(isKossherPath(p)&&(f&O_ACCMODE)!=O_WRONLY){
         int fd=makeFakeFd("KOSSHER_TEST_OPEN\n");
         if(fd>=0){hOpen++;LOGI("HOOK open %s",p);return fd;}
@@ -236,7 +237,9 @@ static int fakeIoctlPrivate(int fd,int req,void* arg){
 static bool hookOne(MSHookFunctionFn h,const char* n,void* repl,void** orig){
     void* p=dlsym(RTLD_DEFAULT,n);
     if(!p)return false;
+    for(int i=0;i<gPatchedCount;i++)if(gPatched[i]==p)return true;
     h(p,repl,orig);
+    if(*orig&&gPatchedCount<16)gPatched[gPatchedCount++]=p;
     bool ok=*orig!=nullptr;
     LOGI("HOOK_INSTALL %s=%d",n,ok);
     return ok;
