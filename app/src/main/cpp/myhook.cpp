@@ -14,6 +14,7 @@
 #include <sys/mman.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
+#include <signal.h>
 #include <pthread.h>
 #include <errno.h>
 #include <utility>
@@ -43,6 +44,13 @@ using ExecveFn = int(*)(const char*, char* const[], char* const[]);
 using FstatFn = int(*)(int, struct stat*);
 using MmapFn = void*(*)(void*, size_t, int, int, int, off_t);
 
+// تایپ‌های توابع خروج و توقف
+using ExitFn = void(*)(int);
+using _ExitFn = void(*)(int);
+using AbortFn = void(*)(void);
+using KillFn = int(*)(pid_t, int);
+using RaiseFn = int(*)(int);
+
 static MSHookFunctionFn gHook;
 static OpenFn gOpen;
 static OpenAtFn gOpenAt;
@@ -61,6 +69,13 @@ static FstatFn gFstat;
 static FstatFn gFstat64;
 static MmapFn gMmap;
 static MmapFn gMmap64;
+
+// پوینتر توابع اصلی خروج
+static ExitFn gExit;
+static _ExitFn g_Exit;
+static AbortFn gAbort;
+static KillFn gKill;
+static RaiseFn gRaise;
 
 static std::atomic<int> gInstalled{0}, gGspaceFound{0};
 static std::atomic<int> hOpenAt{0}, hOpen{0}, hFopen{0}, hIoctl{0}, hSyscall{0};
@@ -95,7 +110,7 @@ static bool isFakeFd(int fd) {
 }
 
 struct HookRecord { void* addr; void* orig; void* repl; };
-static HookRecord gHookRecords[32];
+static HookRecord gHookRecords[48];
 static int gHookRecordCount = 0;
 
 struct GSpaceModule { uintptr_t base = 0; const ElfW(Phdr)* dynamicPhdr = nullptr; };
@@ -160,7 +175,7 @@ static uintptr_t findGSpaceExport(const char* name) {
     return 0;
 }
 
-// بررسی شمولیت مسیرهای هدف (kossher, smaps, maps)
+// فیلتر اختصاصی kossher و smaps/maps
 static bool isKossherPath(const char* p) {
     if (!p) return false;
     if (strstr(p, "kossher") || strstr(p, "smaps") || strstr(p, "maps")) {
@@ -169,19 +184,6 @@ static bool isKossherPath(const char* p) {
     return false;
 }
 
-static std::string markertwo() {
-    char b[1200];
-    int n = snprintf(b, sizeof(b),
-        "KOSSHER_BUFFER=ACTIVE\nPID=%d\n"
-        "OPENAT_HIT=%d\nOPEN_HIT=%d\nFOPEN_HIT=%d\n"
-        "IOCTL_HIT=%d\nSYSCALL_HIT=%d\n"
-        "POPEN_HIT=%d\nSYSTEM_HIT=%d\nEXECVE_HIT=%d\n",
-        getpid(), hOpenAt.load(), hOpen.load(), hFopen.load(),
-        hIoctl.load(), hSyscall.load(), hPopen.load(), hSystem.load(), hExecve.load());
-    return n > 0 ? std::string(b, (size_t)n) : std::string();
-}
-
-// تشخیص دقیق خطوط دارای پرمیشن Writable + Executable در فایل maps
 static bool isWritableExecutableLine(const std::string& line) {
     size_t space1 = line.find(' ');
     if (space1 != std::string::npos && space1 + 4 <= line.length()) {
@@ -193,7 +195,6 @@ static bool isWritableExecutableLine(const std::string& line) {
     return false;
 }
 
-// خواندن و خنثی‌سازی مستقیم maps از طریق سیستم‌کال (بدون ورود به هوک)
 static std::string getmaps() {
     bool old_inside = g_inside_hook;
     g_inside_hook = true;
@@ -220,7 +221,6 @@ static std::string getmaps() {
         line = s.substr(p, e - p + 1);
         p = e + 1;
 
-        // حذف خطوط دارای پرمیشن Writable + Executable
         if (isWritableExecutableLine(line)) {
             continue;
         }
@@ -230,7 +230,6 @@ static std::string getmaps() {
     return out;
 }
 
-// خواندن مستقیم smaps
 std::string getsmaps() {
     bool old_inside = g_inside_hook;
     g_inside_hook = true;
@@ -266,7 +265,6 @@ std::string getsmaps() {
     return out;
 }
 
-// ارائه‌دهنده بافر مناسب بر اساس مسیر درخواستی
 static std::string getBufferForPath(const char* p) {
     if (!p) return marker;
     if (strstr(p, "smaps")) {
@@ -482,7 +480,6 @@ static int fakeExecve(const char* filename, char* const argv[], char* const envp
     return res;
 }
 
-// شبیه‌‌سازی fstat: تنظیم st_size = 0 برای FDهای فیک (دقیقا شبیه /proc)
 static int fakeFstat(int fd, struct stat* buf) {
     if (g_inside_hook || fd < 0) {
         return gFstat ? gFstat(fd, buf) : fstat(fd, buf);
@@ -498,7 +495,6 @@ static int fakeFstat(int fd, struct stat* buf) {
     return res;
 }
 
-// شبیه‌سازی mmap: رد کردن mmap روی FDهای فیک با خطای ENODEV (دقیقا شبیه /proc)
 static void* fakeMmap(void* addr, size_t length, int prot, int flags, int fd, off_t offset) {
     if (g_inside_hook || fd < 0) {
         return gMmap ? gMmap(addr, length, prot, flags, fd, offset) : mmap(addr, length, prot, flags, fd, offset);
@@ -507,7 +503,7 @@ static void* fakeMmap(void* addr, size_t length, int prot, int flags, int fd, of
 
     if (isFakeFd(fd)) {
         g_inside_hook = false;
-        errno = ENODEV; // رفتار استاندارد procfs
+        errno = ENODEV;
         return MAP_FAILED;
     }
 
@@ -536,12 +532,69 @@ static int fakeIoctl(int fd, unsigned long request, void* arg) {
     return res;
 }
 
+// ---------------------------------------------------------------------------
+// پروکسی توابع خروج و توقف جهت جلوگیری از بسته شدن برنامه
+// ---------------------------------------------------------------------------
+
+static void fakeExit(int status) {
+    LOGI("HOOK exit intercepted! status=%d pid=%d", status, getpid());
+    // عدم خروج از برنامه
+}
+
+static void fake_Exit(int status) {
+    LOGI("HOOK _exit intercepted! status=%d pid=%d", status, getpid());
+    // عدم خروج از برنامه
+}
+
+static void fakeAbort() {
+    LOGI("HOOK abort intercepted! pid=%d", getpid());
+    // عدم خروج از برنامه
+}
+
+static int fakeKill(pid_t pid, int sig) {
+    // اگر درخواست کشتن همین پردازه با سیگنال‌های کشنده صادر شود
+    if ((pid == getpid() || pid == 0 || pid == -1) && 
+        (sig == SIGKILL || sig == SIGABRT || sig == SIGSEGV || sig == SIGTERM)) {
+        LOGI("HOOK kill intercepted! target pid=%d sig=%d", pid, sig);
+        return 0; // گزارش خروجی موفق بدون اجرا
+    }
+    return gKill ? gKill(pid, sig) : kill(pid, sig);
+}
+
+static int fakeRaise(int sig) {
+    if (sig == SIGKILL || sig == SIGABRT || sig == SIGSEGV || sig == SIGTERM) {
+        LOGI("HOOK raise intercepted! sig=%d pid=%d", sig, getpid());
+        return 0; // گزارش خروجی موفق بدون اجرا
+    }
+    return gRaise ? gRaise(sig) : raise(sig);
+}
+
 static long fakeSyscall(long number, long a1, long a2, long a3, long a4, long a5, long a6) {
     if (g_inside_hook) {
         return gSyscall ? gSyscall(number, a1, a2, a3, a4, a5, a6) : syscall(number, a1, a2, a3, a4, a5, a6);
     }
     g_inside_hook = true;
-    hSyscall++;
+
+    // رهگیری سیستم‌کال‌های خروج (exit / exit_group)
+#ifdef SYS_exit_group
+    if (number == SYS_exit_group || number == SYS_exit) {
+        LOGI("HOOK syscall exit/exit_group intercepted! nr=%ld", number);
+        g_inside_hook = false;
+        return 0;
+    }
+#endif
+
+#ifdef SYS_kill
+    if (number == SYS_kill || number == SYS_tgkill) {
+        pid_t pid = static_cast<pid_t>(a1);
+        int sig = static_cast<int>(a2);
+        if ((pid == getpid() || pid == 0) && (sig == SIGKILL || sig == SIGABRT || sig == SIGSEGV || sig == SIGTERM)) {
+            LOGI("HOOK syscall kill/tgkill intercepted! sig=%d", sig);
+            g_inside_hook = false;
+            return 0;
+        }
+    }
+#endif
 
 #ifdef SYS_openat
     if (number == SYS_openat) {
@@ -621,6 +674,12 @@ static void* gFstat64Addr;
 static void* gMmapAddr;
 static void* gMmap64Addr;
 
+static void* gExitAddr;
+static void* g_ExitAddr;
+static void* gAbortAddr;
+static void* gKillAddr;
+static void* gRaiseAddr;
+
 static bool hookLibcSymbol(MSHookFunctionFn h, const char* n, void* repl, void** orig, void** addrStore) {
     if (!gLibc || !n || !orig) return false;
     void* p = dlsym(gLibc, n);
@@ -668,6 +727,14 @@ static void libcScan() {
     hookLibcSymbol(gHook, "system", (void*)fakeSystem, (void**)&gSystem, &gSystemAddr);
     hookLibcSymbol(gHook, "popen", (void*)fakePopen, (void**)&gPopen, &gPopenAddr);
     hookLibcSymbol(gHook, "execve", (void*)fakeExecve, (void**)&gExecve, &gExecveAddr);
+
+    // ثبت هوک‌های توابع خروج جهت جلوگیری از متوقف شدن پردازه
+    hookLibcSymbol(gHook, "exit", (void*)fakeExit, (void**)&gExit, &gExitAddr);
+    hookLibcSymbol(gHook, "_exit", (void*)fake_Exit, (void**)&g_Exit, &g_ExitAddr);
+    hookLibcSymbol(gHook, "_Exit", (void*)fake_Exit, (void**)&g_Exit, &g_ExitAddr);
+    hookLibcSymbol(gHook, "abort", (void*)fakeAbort, (void**)&gAbort, &gAbortAddr);
+    hookLibcSymbol(gHook, "kill", (void*)fakeKill, (void**)&gKill, &gKillAddr);
+    hookLibcSymbol(gHook, "raise", (void*)fakeRaise, (void**)&gRaise, &gRaiseAddr);
 }
 
 static bool installHook() {
