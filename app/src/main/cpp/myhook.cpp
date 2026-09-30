@@ -177,11 +177,12 @@ std::string getsmaps(){
     int fd=open("/proc/self/smaps",O_RDONLY);
     if(fd<0)return{};
     char buf[8192];
-    std::string s,out,block,line;
+    std::string s,out,line;
     ssize_t n;
     while((n=read(fd,buf,sizeof(buf)))>0)s.append(buf,n);
     close(fd);
 
+    bool crypto=false;
     size_t p=0;
     while(p<s.size()){
         size_t e=s.find('\n',p);
@@ -189,24 +190,13 @@ std::string getsmaps(){
         line=s.substr(p,e-p+1);
         p=e+1;
 
-        if(line.find("libc.so")!=std::string::npos){
-            block=line;
-            while(p<s.size()){
-                e=s.find('\n',p);
-                if(e==std::string::npos)e=s.size();
-                line=s.substr(p,e-p+1);
-                p=e+1;
+        if(line.find('-')!=std::string::npos)
+            crypto=line.find("libcrypto.so")!=std::string::npos;
 
-                if(line.find("Shared_Dirty:")==0||
-                   line.find("Private_Dirty:")==0)continue;
+        if(crypto&&(line.rfind("Shared_Dirty:",0)==0||line.rfind("Private_Dirty:",0)==0))
+            continue;
 
-                if(line.find('-')!=std::string::npos&&
-                   line.find(' ')!=std::string::npos)break;
-
-                block+=line;
-            }
-            out+=block;
-        }
+        out+=line;
     }
     return out;
 }
