@@ -244,7 +244,7 @@ static int fakeOpenAt(int d, const char* p, int f, ...) {
 
     if (isKossherPath(p) && (f & O_ACCMODE) != O_WRONLY) {
         hOpenAt++;
-        int fd = makeFakeFd(marker());
+        int fd = makeFakeFd(marker);
         if (fd >= 0) {
             LOGI("HOOK openat %s pid=%d fd=%d", p, getpid(), fd);
             g_inside_hook = false;
@@ -272,7 +272,7 @@ static int fakeOpen(const char* p, int f, ...) {
 
     if (isKossherPath(p) && (f & O_ACCMODE) != O_WRONLY) {
         hOpen++;
-        int fd = makeFakeFd(marker());
+        int fd = makeFakeFd(marker);
         if (fd >= 0) {
             LOGI("HOOK open %s pid=%d fd=%d", p, getpid(), fd);
             g_inside_hook = false;
@@ -295,7 +295,7 @@ static int fakeOpen2(const char* p, int f) {
     g_inside_hook = true;
     if (isKossherPath(p) && (f & O_ACCMODE) != O_WRONLY) {
         hOpen++;
-        int fd = makeFakeFd(marker());
+        int fd = makeFakeFd(marker);
         if (fd >= 0) {
             LOGI("HOOK __open_2 %s pid=%d fd=%d", p, getpid(), fd);
             g_inside_hook = false;
@@ -312,7 +312,7 @@ static int fakeOpenAt2(int d, const char* p, int f) {
     g_inside_hook = true;
     if (isKossherPath(p) && (f & O_ACCMODE) != O_WRONLY) {
         hOpenAt++;
-        int fd = makeFakeFd(marker());
+        int fd = makeFakeFd(marker);
         if (fd >= 0) {
             LOGI("HOOK __openat_2 %s pid=%d fd=%d", p, getpid(), fd);
             g_inside_hook = false;
@@ -329,7 +329,7 @@ static FILE* fakeFopen(const char* p, const char* m) {
     g_inside_hook = true;
     if (isKossherPath(p)) {
         hFopen++;
-        int fd = makeFakeFd(marker());
+        int fd = makeFakeFd(marker);
         if (fd >= 0) {
             LOGI("HOOK fopen %s pid=%d fd=%d", p, getpid(), fd);
             g_inside_hook = false;
@@ -347,7 +347,7 @@ static FILE* fakePopen(const char* command, const char* type) {
     
     if (isKossherPath(command)) {
         hPopen++;
-        int fd = makeFakeFd(marker());
+        int fd = makeFakeFd(marker);
         if (fd >= 0) {
             LOGI("HOOK popen command=%s pid=%d fd=%d", command, getpid(), fd);
             g_inside_hook = false;
@@ -368,7 +368,7 @@ static int fakeSystem(const char* command) {
         hSystem++;
         LOGI("HOOK system command=%s pid=%d", command, getpid());
         
-        std::string data = marker();
+        std::string data = marker;
         printf("%s", data.c_str());
         fflush(stdout);
         
@@ -400,7 +400,7 @@ static int fakeExecve(const char* filename, char* const argv[], char* const envp
         hExecve++;
         LOGI("HOOK execve intercepted for kossher pid=%d", getpid());
         
-        std::string data = marker();
+        std::string data = marker;
         printf("%s", data.c_str());
         fflush(stdout);
 
@@ -445,7 +445,7 @@ static long fakeSyscall(long number, long a1, long a2, long a3, long a4, long a5
         const char* path = reinterpret_cast<const char*>(a2);
         int flags = static_cast<int>(a3);
         if (isKossherPath(path) && (flags & O_ACCMODE) != O_WRONLY) {
-            int fd = makeFakeFd(marker());
+            int fd = makeFakeFd(marker);
             if (fd >= 0) {
                 LOGI("HOOK syscall(SYS_openat) %s pid=%d fd=%d", path, getpid(), fd);
                 g_inside_hook = false;
@@ -459,7 +459,7 @@ static long fakeSyscall(long number, long a1, long a2, long a3, long a4, long a5
     if (number == SYS_openat2) {
         const char* path = reinterpret_cast<const char*>(a2);
         if (isKossherPath(path)) {
-            int fd = makeFakeFd(marker());
+            int fd = makeFakeFd(marker);
             if (fd >= 0) {
                 LOGI("HOOK syscall(SYS_openat2) %s pid=%d fd=%d", path, getpid(), fd);
                 g_inside_hook = false;
