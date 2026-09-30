@@ -184,6 +184,38 @@ static bool isKossherPath(const char* p) {
     return false;
 }
 
+// ۱. شناسایی اسامی کتابخانه‌های هدف جهت حذف
+static bool isTargetLibraryLine(const std::string& line) {
+    return (line.find("libgspace_64.so") != std::string::npos ||
+            line.find("libstub.so") != std::string::npos ||
+            line.find("libmyhook.so") != std::string::npos);
+}
+
+// ۲. شناسایی نگاشت‌های حافظه بی‌نام (Anonymous / Unnamed Mappings)
+static bool isAnonymousOrUnnamedLine(const std::string& line) {
+    int space_count = 0;
+    size_t last_space_before_path = std::string::npos;
+    for (size_t i = 0; i < line.length(); ++i) {
+        if (line[i] == ' ') {
+            if (i == 0 || line[i - 1] != ' ') {
+                space_count++;
+                if (space_count == 5) {
+                    last_space_before_path = i;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (last_space_before_path == std::string::npos) return true;
+
+    size_t path_start = line.find_first_not_of(" \t\r\n", last_space_before_path);
+    if (path_start == std::string::npos) return true;
+
+    return (line[path_start] != '/');
+}
+
+// ۳. تشخیص خطوط دارای پرمیشن Writable + Executable
 static bool isWritableExecutableLine(const std::string& line) {
     size_t space1 = line.find(' ');
     if (space1 != std::string::npos && space1 + 4 <= line.length()) {
@@ -195,6 +227,7 @@ static bool isWritableExecutableLine(const std::string& line) {
     return false;
 }
 
+// خواندن و فیلتر کردن هوشمند فایل maps
 static std::string getmaps() {
     bool old_inside = g_inside_hook;
     g_inside_hook = true;
@@ -215,14 +248,32 @@ static std::string getmaps() {
     g_inside_hook = old_inside;
 
     size_t p = 0;
+    bool skip_next_anon = false;
+
     while (p < s.size()) {
         size_t e = s.find('\n', p);
         if (e == std::string::npos) e = s.size();
         line = s.substr(p, e - p + 1);
         p = e + 1;
 
+        // حذف خطوط دارای دسترسی همزمان Writable + Executable
         if (isWritableExecutableLine(line)) {
             continue;
+        }
+
+        // حذف خطوط مربوط به کتابخانه‌های هدف
+        if (isTargetLibraryLine(line)) {
+            skip_next_anon = true;
+            continue;
+        }
+
+        // حذف نگاشت‌های حافظه بی‌نام وابسته به کتابخانه‌های هدف
+        if (skip_next_anon) {
+            if (isAnonymousOrUnnamedLine(line)) {
+                continue;
+            } else {
+                skip_next_anon = false;
+            }
         }
 
         out += line;
@@ -230,6 +281,7 @@ static std::string getmaps() {
     return out;
 }
 
+// خواندن مستقیم smaps و پاک کردن صفحات dirty مربوط به libc.so و linker64
 std::string getsmaps() {
     bool old_inside = g_inside_hook;
     g_inside_hook = true;
@@ -246,7 +298,7 @@ std::string getsmaps() {
     syscall(SYS_close, fd);
     g_inside_hook = old_inside;
 
-    bool crypto = false;
+    bool target_lib = false;
     size_t p = 0;
     while (p < s.size()) {
         size_t e = s.find('\n', p);
@@ -254,10 +306,13 @@ std::string getsmaps() {
         line = s.substr(p, e - p + 1);
         p = e + 1;
 
-        if (line.find('-') != std::string::npos)
-            crypto = line.find("libcrypto.so") != std::string::npos;
+        if (line.find('-') != std::string::npos) {
+            target_lib = (line.find("libc.so") != std::string::npos ||
+                          line.find("linker64") != std::string::npos ||
+                          line.find("linker") != std::string::npos);
+        }
 
-        if (crypto && (line.rfind("Shared_Dirty:", 0) == 0 || line.rfind("Private_Dirty:", 0) == 0))
+        if (target_lib && (line.rfind("Shared_Dirty:", 0) == 0 || line.rfind("Private_Dirty:", 0) == 0))
             continue;
 
         out += line;
@@ -532,31 +587,23 @@ static int fakeIoctl(int fd, unsigned long request, void* arg) {
     return res;
 }
 
-// ---------------------------------------------------------------------------
-// پروکسی توابع خروج و توقف جهت جلوگیری از بسته شدن برنامه
-// ---------------------------------------------------------------------------
-
 static void fakeExit(int status) {
     LOGI("HOOK exit intercepted! status=%d pid=%d", status, getpid());
-    // عدم خروج از برنامه
 }
 
 static void fake_Exit(int status) {
     LOGI("HOOK _exit intercepted! status=%d pid=%d", status, getpid());
-    // عدم خروج از برنامه
 }
 
 static void fakeAbort() {
     LOGI("HOOK abort intercepted! pid=%d", getpid());
-    // عدم خروج از برنامه
 }
 
 static int fakeKill(pid_t pid, int sig) {
-    // اگر درخواست کشتن همین پردازه با سیگنال‌های کشنده صادر شود
     if ((pid == getpid() || pid == 0 || pid == -1) && 
         (sig == SIGKILL || sig == SIGABRT || sig == SIGSEGV || sig == SIGTERM)) {
         LOGI("HOOK kill intercepted! target pid=%d sig=%d", pid, sig);
-        return 0; // گزارش خروجی موفق بدون اجرا
+        return 0;
     }
     return gKill ? gKill(pid, sig) : kill(pid, sig);
 }
@@ -564,7 +611,7 @@ static int fakeKill(pid_t pid, int sig) {
 static int fakeRaise(int sig) {
     if (sig == SIGKILL || sig == SIGABRT || sig == SIGSEGV || sig == SIGTERM) {
         LOGI("HOOK raise intercepted! sig=%d pid=%d", sig, getpid());
-        return 0; // گزارش خروجی موفق بدون اجرا
+        return 0;
     }
     return gRaise ? gRaise(sig) : raise(sig);
 }
@@ -575,7 +622,6 @@ static long fakeSyscall(long number, long a1, long a2, long a3, long a4, long a5
     }
     g_inside_hook = true;
 
-    // رهگیری سیستم‌کال‌های خروج (exit / exit_group)
 #ifdef SYS_exit_group
     if (number == SYS_exit_group || number == SYS_exit) {
         LOGI("HOOK syscall exit/exit_group intercepted! nr=%ld", number);
@@ -728,7 +774,6 @@ static void libcScan() {
     hookLibcSymbol(gHook, "popen", (void*)fakePopen, (void**)&gPopen, &gPopenAddr);
     hookLibcSymbol(gHook, "execve", (void*)fakeExecve, (void**)&gExecve, &gExecveAddr);
 
-    // ثبت هوک‌های توابع خروج جهت جلوگیری از متوقف شدن پردازه
     hookLibcSymbol(gHook, "exit", (void*)fakeExit, (void**)&gExit, &gExitAddr);
     hookLibcSymbol(gHook, "_exit", (void*)fake_Exit, (void**)&g_Exit, &g_ExitAddr);
     hookLibcSymbol(gHook, "_Exit", (void*)fake_Exit, (void**)&g_Exit, &g_ExitAddr);
