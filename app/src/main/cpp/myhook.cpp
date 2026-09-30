@@ -65,7 +65,8 @@ static thread_local bool g_inside_hook = false;
 // مدیریت و ثبت لیست FDهای فیک
 static std::set<int> g_fake_fds;
 static std::mutex g_fds_mutex;
-std::string marker;
+static std::string marker;
+
 static void registerFakeFd(int fd) {
     if (fd >= 0) {
         std::lock_guard<std::mutex> lock(g_fds_mutex);
@@ -152,10 +153,10 @@ static uintptr_t findGSpaceExport(const char* name) {
     return 0;
 }
 
-// فیلتر اختصاصی kossher
+// بررسی شمولیت مسیرهای هدف (kossher, smaps, maps)
 static bool isKossherPath(const char* p) {
     if (!p) return false;
-    if (strstr(p, "smaps")) {
+    if (strstr(p, "kossher") || strstr(p, "smaps") || strstr(p, "maps")) {
         return true;
     }
     return false;
@@ -173,32 +174,101 @@ static std::string markertwo() {
     return n > 0 ? std::string(b, (size_t)n) : std::string();
 }
 
-std::string getsmaps(){
-    int fd=open("/proc/self/smaps",O_RDONLY);
-    if(fd<0)return{};
+// تشخیص دقیق خطوط دارای پرمیشن Writable + Executable در فایل maps
+static bool isWritableExecutableLine(const std::string& line) {
+    size_t space1 = line.find(' ');
+    if (space1 != std::string::npos && space1 + 4 <= line.length()) {
+        std::string perm = line.substr(space1 + 1, 4);
+        if (perm.find('w') != std::string::npos && perm.find('x') != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// خواندن و خنثی‌سازی مستقیم maps از طریق سیستم‌کال (بدون ورود به هوک)
+static std::string getmaps() {
+    bool old_inside = g_inside_hook;
+    g_inside_hook = true;
+
+    int fd = (int)syscall(SYS_openat, AT_FDCWD, "/proc/self/maps", O_RDONLY, 0);
+    if (fd < 0) {
+        g_inside_hook = old_inside;
+        return "";
+    }
+
     char buf[8192];
-    std::string s,out,line;
+    std::string s, out, line;
     ssize_t n;
-    while((n=read(fd,buf,sizeof(buf)))>0)s.append(buf,n);
-    close(fd);
+    while ((n = syscall(SYS_read, fd, buf, sizeof(buf))) > 0) {
+        s.append(buf, n);
+    }
+    syscall(SYS_close, fd);
+    g_inside_hook = old_inside;
 
-    bool crypto=false;
-    size_t p=0;
-    while(p<s.size()){
-        size_t e=s.find('\n',p);
-        if(e==std::string::npos)e=s.size();
-        line=s.substr(p,e-p+1);
-        p=e+1;
+    size_t p = 0;
+    while (p < s.size()) {
+        size_t e = s.find('\n', p);
+        if (e == std::string::npos) e = s.size();
+        line = s.substr(p, e - p + 1);
+        p = e + 1;
 
-        if(line.find('-')!=std::string::npos)
-            crypto=line.find("libcrypto.so")!=std::string::npos;
-
-        if(crypto&&(line.rfind("Shared_Dirty:",0)==0||line.rfind("Private_Dirty:",0)==0))
+        // حذف خطوط دارای پرمیشن Writable + Executable
+        if (isWritableExecutableLine(line)) {
             continue;
+        }
 
-        out+=line;
+        out += line;
     }
     return out;
+}
+
+// خواندن مستقیم smaps
+std::string getsmaps() {
+    bool old_inside = g_inside_hook;
+    g_inside_hook = true;
+
+    int fd = (int)syscall(SYS_openat, AT_FDCWD, "/proc/self/smaps", O_RDONLY, 0);
+    if (fd < 0) {
+        g_inside_hook = old_inside;
+        return "";
+    }
+    char buf[8192];
+    std::string s, out, line;
+    ssize_t n;
+    while ((n = syscall(SYS_read, fd, buf, sizeof(buf))) > 0) s.append(buf, n);
+    syscall(SYS_close, fd);
+    g_inside_hook = old_inside;
+
+    bool crypto = false;
+    size_t p = 0;
+    while (p < s.size()) {
+        size_t e = s.find('\n', p);
+        if (e == std::string::npos) e = s.size();
+        line = s.substr(p, e - p + 1);
+        p = e + 1;
+
+        if (line.find('-') != std::string::npos)
+            crypto = line.find("libcrypto.so") != std::string::npos;
+
+        if (crypto && (line.rfind("Shared_Dirty:", 0) == 0 || line.rfind("Private_Dirty:", 0) == 0))
+            continue;
+
+        out += line;
+    }
+    return out;
+}
+
+// ارائه‌دهنده بافر مناسب بر اساس مسیر درخواستی
+static std::string getBufferForPath(const char* p) {
+    if (!p) return marker;
+    if (strstr(p, "smaps")) {
+        return getsmaps();
+    }
+    if (strstr(p, "maps")) {
+        return getmaps();
+    }
+    return marker;
 }
 
 static int makeFakeFd(const std::string& d) {
@@ -234,7 +304,7 @@ static int fakeOpenAt(int d, const char* p, int f, ...) {
 
     if (isKossherPath(p) && (f & O_ACCMODE) != O_WRONLY) {
         hOpenAt++;
-        int fd = makeFakeFd(marker);
+        int fd = makeFakeFd(getBufferForPath(p));
         if (fd >= 0) {
             LOGI("HOOK openat %s pid=%d fd=%d", p, getpid(), fd);
             g_inside_hook = false;
@@ -262,7 +332,7 @@ static int fakeOpen(const char* p, int f, ...) {
 
     if (isKossherPath(p) && (f & O_ACCMODE) != O_WRONLY) {
         hOpen++;
-        int fd = makeFakeFd(marker);
+        int fd = makeFakeFd(getBufferForPath(p));
         if (fd >= 0) {
             LOGI("HOOK open %s pid=%d fd=%d", p, getpid(), fd);
             g_inside_hook = false;
@@ -285,7 +355,7 @@ static int fakeOpen2(const char* p, int f) {
     g_inside_hook = true;
     if (isKossherPath(p) && (f & O_ACCMODE) != O_WRONLY) {
         hOpen++;
-        int fd = makeFakeFd(marker);
+        int fd = makeFakeFd(getBufferForPath(p));
         if (fd >= 0) {
             LOGI("HOOK __open_2 %s pid=%d fd=%d", p, getpid(), fd);
             g_inside_hook = false;
@@ -302,7 +372,7 @@ static int fakeOpenAt2(int d, const char* p, int f) {
     g_inside_hook = true;
     if (isKossherPath(p) && (f & O_ACCMODE) != O_WRONLY) {
         hOpenAt++;
-        int fd = makeFakeFd(marker);
+        int fd = makeFakeFd(getBufferForPath(p));
         if (fd >= 0) {
             LOGI("HOOK __openat_2 %s pid=%d fd=%d", p, getpid(), fd);
             g_inside_hook = false;
@@ -319,7 +389,7 @@ static FILE* fakeFopen(const char* p, const char* m) {
     g_inside_hook = true;
     if (isKossherPath(p)) {
         hFopen++;
-        int fd = makeFakeFd(marker);
+        int fd = makeFakeFd(getBufferForPath(p));
         if (fd >= 0) {
             LOGI("HOOK fopen %s pid=%d fd=%d", p, getpid(), fd);
             g_inside_hook = false;
@@ -337,7 +407,7 @@ static FILE* fakePopen(const char* command, const char* type) {
     
     if (isKossherPath(command)) {
         hPopen++;
-        int fd = makeFakeFd(marker);
+        int fd = makeFakeFd(getBufferForPath(command));
         if (fd >= 0) {
             LOGI("HOOK popen command=%s pid=%d fd=%d", command, getpid(), fd);
             g_inside_hook = false;
@@ -358,7 +428,7 @@ static int fakeSystem(const char* command) {
         hSystem++;
         LOGI("HOOK system command=%s pid=%d", command, getpid());
         
-        std::string data = marker;
+        std::string data = getBufferForPath(command);
         printf("%s", data.c_str());
         fflush(stdout);
         
@@ -376,11 +446,13 @@ static int fakeExecve(const char* filename, char* const argv[], char* const envp
     g_inside_hook = true;
 
     bool match = false;
+    const char* matched_path = filename;
     if (filename && isKossherPath(filename)) match = true;
     if (!match && argv) {
         for (int i = 0; argv[i] != nullptr; i++) {
             if (isKossherPath(argv[i])) {
                 match = true;
+                matched_path = argv[i];
                 break;
             }
         }
@@ -390,7 +462,7 @@ static int fakeExecve(const char* filename, char* const argv[], char* const envp
         hExecve++;
         LOGI("HOOK execve intercepted for kossher pid=%d", getpid());
         
-        std::string data = marker;
+        std::string data = getBufferForPath(matched_path);
         printf("%s", data.c_str());
         fflush(stdout);
 
@@ -435,7 +507,7 @@ static long fakeSyscall(long number, long a1, long a2, long a3, long a4, long a5
         const char* path = reinterpret_cast<const char*>(a2);
         int flags = static_cast<int>(a3);
         if (isKossherPath(path) && (flags & O_ACCMODE) != O_WRONLY) {
-            int fd = makeFakeFd(marker);
+            int fd = makeFakeFd(getBufferForPath(path));
             if (fd >= 0) {
                 LOGI("HOOK syscall(SYS_openat) %s pid=%d fd=%d", path, getpid(), fd);
                 g_inside_hook = false;
@@ -449,7 +521,7 @@ static long fakeSyscall(long number, long a1, long a2, long a3, long a4, long a5
     if (number == SYS_openat2) {
         const char* path = reinterpret_cast<const char*>(a2);
         if (isKossherPath(path)) {
-            int fd = makeFakeFd(marker);
+            int fd = makeFakeFd(getBufferForPath(path));
             if (fd >= 0) {
                 LOGI("HOOK syscall(SYS_openat2) %s pid=%d fd=%d", path, getpid(), fd);
                 g_inside_hook = false;
@@ -543,7 +615,7 @@ static bool installHook() {
     if (!a) return false;
     gHook = (MSHookFunctionFn)a;
     gInstalled = 1;
-    marker=getsmaps();
+    marker = getsmaps();
     libcScan();
     return true;
 }
