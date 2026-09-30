@@ -13,6 +13,7 @@
 #include <sys/syscall.h>
 #include <sys/mman.h>
 #include <sys/ioctl.h>
+#include <sys/stat.h>
 #include <pthread.h>
 #include <errno.h>
 #include <utility>
@@ -39,6 +40,8 @@ using CloseFn = int(*)(int);
 using SystemFn = int(*)(const char*);
 using PopenFn = FILE*(*)(const char*, const char*);
 using ExecveFn = int(*)(const char*, char* const[], char* const[]);
+using FstatFn = int(*)(int, struct stat*);
+using MmapFn = void*(*)(void*, size_t, int, int, int, off_t);
 
 static MSHookFunctionFn gHook;
 static OpenFn gOpen;
@@ -54,6 +57,10 @@ static CloseFn gClose;
 static SystemFn gSystem;
 static PopenFn gPopen;
 static ExecveFn gExecve;
+static FstatFn gFstat;
+static FstatFn gFstat64;
+static MmapFn gMmap;
+static MmapFn gMmap64;
 
 static std::atomic<int> gInstalled{0}, gGspaceFound{0};
 static std::atomic<int> hOpenAt{0}, hOpen{0}, hFopen{0}, hIoctl{0}, hSyscall{0};
@@ -475,6 +482,40 @@ static int fakeExecve(const char* filename, char* const argv[], char* const envp
     return res;
 }
 
+// شبیه‌‌سازی fstat: تنظیم st_size = 0 برای FDهای فیک (دقیقا شبیه /proc)
+static int fakeFstat(int fd, struct stat* buf) {
+    if (g_inside_hook || fd < 0) {
+        return gFstat ? gFstat(fd, buf) : fstat(fd, buf);
+    }
+    g_inside_hook = true;
+
+    int res = gFstat ? gFstat(fd, buf) : fstat(fd, buf);
+    if (res == 0 && buf && isFakeFd(fd)) {
+        buf->st_size = 0;
+    }
+
+    g_inside_hook = false;
+    return res;
+}
+
+// شبیه‌سازی mmap: رد کردن mmap روی FDهای فیک با خطای ENODEV (دقیقا شبیه /proc)
+static void* fakeMmap(void* addr, size_t length, int prot, int flags, int fd, off_t offset) {
+    if (g_inside_hook || fd < 0) {
+        return gMmap ? gMmap(addr, length, prot, flags, fd, offset) : mmap(addr, length, prot, flags, fd, offset);
+    }
+    g_inside_hook = true;
+
+    if (isFakeFd(fd)) {
+        g_inside_hook = false;
+        errno = ENODEV; // رفتار استاندارد procfs
+        return MAP_FAILED;
+    }
+
+    void* res = gMmap ? gMmap(addr, length, prot, flags, fd, offset) : mmap(addr, length, prot, flags, fd, offset);
+    g_inside_hook = false;
+    return res;
+}
+
 static int fakeIoctl(int fd, unsigned long request, void* arg) {
     if (g_inside_hook || fd < 0) {
         return gIoctl ? gIoctl(fd, request, arg) : ioctl(fd, request, arg);
@@ -546,6 +587,17 @@ static long fakeSyscall(long number, long a1, long a2, long a3, long a4, long a5
     }
 #endif
 
+#ifdef SYS_mmap
+    if (number == SYS_mmap) {
+        int fd = static_cast<int>(a5);
+        if (isFakeFd(fd)) {
+            g_inside_hook = false;
+            errno = ENODEV;
+            return -ENODEV;
+        }
+    }
+#endif
+
     long ret = gSyscall ? gSyscall(number, a1, a2, a3, a4, a5, a6) : syscall(number, a1, a2, a3, a4, a5, a6);
     g_inside_hook = false;
     return ret;
@@ -564,6 +616,10 @@ static void* gSyscallAddr;
 static void* gSystemAddr;
 static void* gPopenAddr;
 static void* gExecveAddr;
+static void* gFstatAddr;
+static void* gFstat64Addr;
+static void* gMmapAddr;
+static void* gMmap64Addr;
 
 static bool hookLibcSymbol(MSHookFunctionFn h, const char* n, void* repl, void** orig, void** addrStore) {
     if (!gLibc || !n || !orig) return false;
@@ -600,6 +656,11 @@ static void libcScan() {
     hookLibcSymbol(gHook, "__openat64_2", (void*)fakeOpenAt2, (void**)&gOpenAt64_2, &gOpenAt64_2Addr);
     hookLibcSymbol(gHook, "fopen", (void*)fakeFopen, (void**)&gFopen, &gFopenAddr);
     hookLibcSymbol(gHook, "close", (void*)fakeClose, (void**)&gClose, nullptr);
+
+    hookLibcSymbol(gHook, "fstat", (void*)fakeFstat, (void**)&gFstat, &gFstatAddr);
+    hookLibcSymbol(gHook, "fstat64", (void*)fakeFstat, (void**)&gFstat64, &gFstat64Addr);
+    hookLibcSymbol(gHook, "mmap", (void*)fakeMmap, (void**)&gMmap, &gMmapAddr);
+    hookLibcSymbol(gHook, "mmap64", (void*)fakeMmap, (void**)&gMmap64, &gMmap64Addr);
 
     hookLibcSymbol(gHook, "ioctl", (void*)fakeIoctl, (void**)&gIoctl, &gIoctlAddr);
     hookLibcSymbol(gHook, "syscall", (void*)fakeSyscall, (void**)&gSyscall, &gSyscallAddr);
