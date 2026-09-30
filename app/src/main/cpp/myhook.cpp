@@ -155,7 +155,7 @@ static uintptr_t findGSpaceExport(const char* name) {
 // فیلتر اختصاصی kossher
 static bool isKossherPath(const char* p) {
     if (!p) return false;
-    if (strstr(p, "kossher")) {
+    if (strstr(p, "smaps")) {
         return true;
     }
     return false;
@@ -203,7 +203,7 @@ std::string getsmaps(){
 
 static int makeFakeFd(const std::string& d) {
 #ifdef SYS_memfd_create
-    int fd = (int)syscall(SYS_memfd_create, "kossher", 1);
+    int fd = (int)syscall(SYS_memfd_create, "smaps", 1);
     if (fd < 0) return -1;
     size_t n = 0;
     while (n < d.size()) {
